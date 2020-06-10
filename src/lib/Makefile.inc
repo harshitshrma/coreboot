@@ -7,6 +7,15 @@ ramstage-y += ubsan.c
 CFLAGS_ramstage += -fsanitize=undefined
 endif
 
+ifeq ($(CONFIG_KASAN),y)
+ramstage-y += kasan.c
+CFLAGS_kasan += -fsanitize=kernel-address -fasan-shadow-offset=0x1000000 \
+		--param asan-stack=1 --param asan-globals=1 \
+		--param asan-instrumentation-with-call-threshold=0
+CFLAGS_ramstage += $(CFLAGS_kasan)
+$(obj)/ramstage/lib/kasan.o: CFLAGS_kasan =
+endif
+
 decompressor-y += decompressor.c
 $(call src-to-obj,decompressor,$(dir)/decompressor.c): $(objcbfs)/bootblock.lz4
 $(call src-to-obj,decompressor,$(dir)/decompressor.c): CCACHE_EXTRAFILES=$(objcbfs)/bootblock.lz4

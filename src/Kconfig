@@ -250,6 +250,15 @@ config UBSAN
 	  say N because it adds a small performance penalty and may abort
 	  on code that happens to work in spite of the UB.
 
+config KASAN
+	bool "Address sanitizer support"
+	default n
+	help
+	  Enables KASAN (Kernel Address Sanitizer) runtime memory debugger,
+	  designed to find out-of-bounds accesses and use-after-free bugs.
+	  The average slowdown of the instrumented program is ~2x.
+	  If unsure, say N.
+
 config RELOCATABLE_RAMSTAGE
 	bool
 	default y if ARCH_X86
