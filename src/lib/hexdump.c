@@ -66,3 +66,44 @@ void hexdump32(char LEVEL, const void *d, size_t len)
 
 	printk(LEVEL, "\n\n");
 }
+
+void kasan_hexdump(const char *prefix_str, const void *memory, size_t length)
+{
+	size_t i, j;
+	uint8_t *line;
+	int all_zero = 0;
+	int all_one = 0;
+	size_t num_bytes;
+
+	for (i = 0; i < length; i += 16) {
+		num_bytes = MIN(length - i, 16);
+		line = ((uint8_t *)memory) + i;
+
+		all_zero++;
+		all_one++;
+		for (j = 0; j < num_bytes; j++) {
+			if (line[j] != 0) {
+				all_zero = 0;
+				break;
+			}
+		}
+
+		for (j = 0; j < num_bytes; j++) {
+			if (line[j] != 0xff) {
+				all_one = 0;
+				break;
+			}
+		}
+
+		if ((all_zero < 2) && (all_one < 2)) {
+			printk(BIOS_DEBUG, "%s", prefix_str);
+			for (j = 0; j < num_bytes; j++)
+				printk(BIOS_DEBUG, " %02x", line[j]);
+			for (; j < 16; j++)
+				printk(BIOS_DEBUG, "   ");
+			printk(BIOS_DEBUG, "\n");
+		} else if ((all_zero == 2) || (all_one == 2)) {
+			printk(BIOS_DEBUG, "...\n");
+		}
+	}
+}

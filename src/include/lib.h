@@ -30,6 +30,7 @@ int checkstack(void *top_of_stack, int core);
  */
 void hexdump(const void *memory, size_t length);
 void hexdump32(char LEVEL, const void *d, size_t len);
+void kasan_hexdump(const char *prefix_str, const void *memory, size_t length);
 
 /*
  * hexstrtobin - Turn a string of ASCII hex characters into binary
