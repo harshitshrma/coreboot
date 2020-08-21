@@ -34,10 +34,6 @@
  * Bus 0:Device 20:Function 0 xHCI Controller
 */
 
-/* PCH types */
-#define PCH_TYPE_LPT		0x8c
-#define PCH_TYPE_LPT_LP		0x9c
-
 /* PCH stepping values for LPC device */
 #define LPT_H_STEP_B0		0x02
 #define LPT_H_STEP_C0		0x03
@@ -51,11 +47,10 @@
  * It does not matter where we put the SMBus I/O base, as long as we
  * keep it consistent and don't interfere with other devices.  Stage2
  * will relocate this anyways.
- * Our solution is to have SMB initialization move the I/O to SMBUS_IO_BASE
+ * Our solution is to have SMB initialization move the I/O to CONFIG_FIXED_SMBUS_IO_BASE
  * again. But handling static BARs is a generic problem that should be
  * solved in the device allocator.
  */
-#define SMBUS_IO_BASE		0x0400
 #define SMBUS_SLAVE_ADDR	0x24
 
 #if CONFIG(INTEL_LYNXPOINT_LP)
@@ -74,54 +69,21 @@
 
 #ifndef __ACPI__
 
+/* PCH platform types, safe for MRC consumption */
+enum pch_platform_type {
+	PCH_TYPE_MOBILE	 = 0,
+	PCH_TYPE_DESKTOP = 1, /* or server */
+	PCH_TYPE_ULT	 = 5,
+};
+
 void usb_ehci_sleep_prepare(pci_devfn_t dev, u8 slp_typ);
 void usb_ehci_disable(pci_devfn_t dev);
 void usb_xhci_sleep_prepare(pci_devfn_t dev, u8 slp_typ);
 void usb_xhci_route_all(void);
 
-/* State Machine configuration. */
-#define RCBA_REG_SIZE_MASK 0x8000
-#define   RCBA_REG_SIZE_16   0x8000
-#define   RCBA_REG_SIZE_32   0x0000
-#define RCBA_COMMAND_MASK  0x000f
-#define   RCBA_COMMAND_SET   0x0001
-#define   RCBA_COMMAND_READ  0x0002
-#define   RCBA_COMMAND_RMW   0x0003
-#define   RCBA_COMMAND_END   0x0007
-
-#define RCBA_ENCODE_COMMAND(command_, reg_, mask_, or_value_) \
-	{ .command = command_,   \
-	  .reg = reg_,           \
-	  .mask = mask_,         \
-	  .or_value = or_value_  \
-	}
-#define RCBA_SET_REG_32(reg_, value_) \
-	RCBA_ENCODE_COMMAND(RCBA_REG_SIZE_32|RCBA_COMMAND_SET, reg_, 0, value_)
-#define RCBA_READ_REG_32(reg_) \
-	RCBA_ENCODE_COMMAND(RCBA_REG_SIZE_32|RCBA_COMMAND_READ, reg_, 0, 0)
-#define RCBA_RMW_REG_32(reg_, mask_, or_) \
-	RCBA_ENCODE_COMMAND(RCBA_REG_SIZE_32|RCBA_COMMAND_RMW, reg_, mask_, or_)
-#define RCBA_SET_REG_16(reg_, value_) \
-	RCBA_ENCODE_COMMAND(RCBA_REG_SIZE_16|RCBA_COMMAND_SET, reg_, 0, value_)
-#define RCBA_READ_REG_16(reg_) \
-	RCBA_ENCODE_COMMAND(RCBA_REG_SIZE_16|RCBA_COMMAND_READ, reg_, 0, 0)
-#define RCBA_RMW_REG_16(reg_, mask_, or_) \
-	RCBA_ENCODE_COMMAND(RCBA_REG_SIZE_16|RCBA_COMMAND_RMW, reg_, mask_, or_)
-#define RCBA_END_CONFIG \
-	RCBA_ENCODE_COMMAND(RCBA_COMMAND_END, 0, 0, 0)
-
-struct rcba_config_instruction
-{
-	u16 command;
-	u16 reg;
-	u32 mask;
-	u32 or_value;
-};
-
-void pch_config_rcba(const struct rcba_config_instruction *rcba_config);
+enum pch_platform_type get_pch_platform_type(void);
 int pch_silicon_revision(void);
 int pch_silicon_id(void);
-int pch_silicon_type(void);
 int pch_is_lp(void);
 u16 get_pmbase(void);
 u16 get_gpiobase(void);
@@ -153,23 +115,15 @@ void disable_gpe(u32 mask);
 
 void pch_enable(struct device *dev);
 void pch_disable_devfn(struct device *dev);
-u32 pch_iobp_read(u32 address);
-void pch_iobp_write(u32 address, u32 data);
-void pch_iobp_update(u32 address, u32 andvalue, u32 orvalue);
 void pch_log_state(void);
 void acpi_create_intel_hpet(acpi_hpet_t * hpet);
 void acpi_create_serialio_ssdt(acpi_header_t *ssdt);
 
-
-#if ENV_ROMSTAGE
-int smbus_read_byte(unsigned int device, unsigned int address);
-#endif
-
 void enable_usb_bar(void);
-int early_pch_init(const void *gpio_map,
-                   const struct rcba_config_instruction *rcba_config);
+int early_pch_init(void);
 void pch_enable_lpc(void);
 void mainboard_config_superio(void);
+void mainboard_config_rcba(void);
 
 #define MAINBOARD_POWER_OFF	0
 #define MAINBOARD_POWER_ON	1
@@ -184,6 +138,17 @@ void mainboard_config_superio(void);
 /* Power Management Control and Status */
 #define PCH_PCS			0x84
 #define  PCH_PCS_PS_D3HOT	3
+
+/* SerialIO */
+#define PCH_DEVFN_SDMA		PCI_DEVFN(0x15, 0)
+#define PCH_DEVFN_I2C0		PCI_DEVFN(0x15, 1)
+#define PCH_DEVFN_I2C1		PCI_DEVFN(0x15, 2)
+#define PCH_DEVFN_SPI0		PCI_DEVFN(0x15, 3)
+#define PCH_DEVFN_SPI1		PCI_DEVFN(0x15, 4)
+#define PCH_DEVFN_UART0		PCI_DEVFN(0x15, 5)
+#define PCH_DEVFN_UART1		PCI_DEVFN(0x15, 6)
+
+#define PCH_DEVFN_SDIO		PCI_DEVFN(0x17, 0)
 
 #define PCH_EHCI1_DEV		PCI_DEV(0, 0x1d, 0)
 #define PCH_EHCI2_DEV		PCI_DEV(0, 0x1a, 0)
@@ -244,8 +209,7 @@ void mainboard_config_superio(void);
 #define LPC_GEN4_DEC		0x90 /* LPC IF Generic Decode Range 4 */
 #define LGMR			0x98 /* LPC Generic Memory Range */
 
-/* PCI Configuration Space (D31:F1): IDE */
-#define PCH_IDE_DEV		PCI_DEV(0, 0x1f, 1)
+/* PCI Configuration Space (D31:F2): SATA */
 #define PCH_SATA_DEV		PCI_DEV(0, 0x1f, 2)
 #define PCH_SATA2_DEV		PCI_DEV(0, 0x1f, 5)
 #define INTR_LN			0x3c
@@ -436,40 +400,6 @@ void mainboard_config_superio(void);
 #define GPIOBASE		0x48
 
 #define PMBASE		0x40
-
-#define VCH		0x0000	/* 32bit */
-#define VCAP1		0x0004	/* 32bit */
-#define VCAP2		0x0008	/* 32bit */
-#define PVC		0x000c	/* 16bit */
-#define PVS		0x000e	/* 16bit */
-
-#define V0CAP		0x0010	/* 32bit */
-#define V0CTL		0x0014	/* 32bit */
-#define V0STS		0x001a	/* 16bit */
-
-#define V1CAP		0x001c	/* 32bit */
-#define V1CTL		0x0020	/* 32bit */
-#define V1STS		0x0026	/* 16bit */
-
-#define RCTCL		0x0100	/* 32bit */
-#define ESD		0x0104	/* 32bit */
-#define ULD		0x0110	/* 32bit */
-#define ULBA		0x0118	/* 64bit */
-
-#define RP1D		0x0120	/* 32bit */
-#define RP1BA		0x0128	/* 64bit */
-#define RP2D		0x0130	/* 32bit */
-#define RP2BA		0x0138	/* 64bit */
-#define RP3D		0x0140	/* 32bit */
-#define RP3BA		0x0148	/* 64bit */
-#define RP4D		0x0150	/* 32bit */
-#define RP4BA		0x0158	/* 64bit */
-#define HDD		0x0160	/* 32bit */
-#define HDBA		0x0168	/* 64bit */
-#define RP5D		0x0170	/* 32bit */
-#define RP5BA		0x0178	/* 64bit */
-#define RP6D		0x0180	/* 32bit */
-#define RP6BA		0x0188	/* 64bit */
 
 #define RPC		0x0400	/* 32bit */
 #define RPFN		0x0404	/* 32bit */

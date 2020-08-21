@@ -40,6 +40,8 @@ are permitted provided that the following conditions are met:
 #define MEMTYPE_2LM_MASK       (1 << 1)
 #define MEMTYPE_VOLATILE_MASK  (MEMTYPE_1LM_MASK | MEMTYPE_2LM_MASK)
 
+#define MAX_FPGA_REMOTE_SAD_RULES         2     // Maximum FPGA sockets exists on ICX platform
+
 #define MAX_SAD_RULES                     24
 #define MAX_DRAM_CLUSTERS                 1
 #define MAX_IMC_PER_SOCKET                2
@@ -96,14 +98,22 @@ typedef struct SystemMemoryMapHob {
 
   UINT8    reserved2[61];
 
+  UINT8    NumChPerMC;
   UINT8    numberEntries;                         // Number of Memory Map Elements
-  SYSTEM_MEMORY_MAP_ELEMENT Element[MAX_SOCKET * MAX_DRAM_CLUSTERS * MAX_SAD_RULES];
+  SYSTEM_MEMORY_MAP_ELEMENT Element[(MAX_SOCKET * MAX_DRAM_CLUSTERS * MAX_SAD_RULES) + MAX_FPGA_REMOTE_SAD_RULES];
 
-  UINT8    reserved3[24409];
+  UINT8    reserved3[24518];
+
+  UINT16  BiosFisVersion;                              // Firmware Interface Specification version currently supported by BIOS
+
+  UINT8    reserved4[8];
+
+  UINT32   MmiohBase;                                   // MMIOH base in 64MB granularity
+
+  UINT8    reserved5[2];
+
 } SYSTEM_MEMORY_MAP_HOB;
 
 #pragma pack()
-
-void soc_display_memmap_hob(void);
 
 #endif

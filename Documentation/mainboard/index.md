@@ -37,6 +37,8 @@ The boards in this section are not real mainboards, but emulators.
 - [Spike RISC-V emulator](emulation/spike-riscv.md)
 - [Qemu RISC-V emulator](emulation/qemu-riscv.md)
 - [Qemu AArch64 emulator](emulation/qemu-aarch64.md)
+- [Qemu x86 Q35](emulation/qemu-q35.md)
+- [Qemu x86 PC](emulation/qemu-i440fx.md)
 
 ## Facebook
 
@@ -51,10 +53,6 @@ The boards in this section are not real mainboards, but emulators.
 
 - [GA-H61M-S2PV](gigabyte/ga-h61m-s2pv.md)
 
-## Google
-
-- [Dragonegg](google/dragonegg.md)
-
 ## HP
 
 - [Compaq 8200 Elite SFF](hp/compaq_8200_sff.md)
@@ -63,6 +61,7 @@ The boards in this section are not real mainboards, but emulators.
 ### EliteBook series
 
 - [HP Laptops with KBC1126 EC](hp/hp_kbc1126_laptops.md)
+- [EliteBook 2560p](hp/2560p.md)
 - [EliteBook 8760w](hp/8760w.md)
 
 ## Intel
@@ -102,6 +101,7 @@ The boards in this section are not real mainboards, but emulators.
 - [W530](lenovo/w530.md)
 - [T430 / T530 / X230 / W530 common](lenovo/Ivy_Bridge_series.md)
 - [T431s](lenovo/t431s.md)
+- [X230s](lenovo/x230s.md)
 - [Internal flashing](lenovo/ivb_internal_flashing.md)
 
 ### Haswell series
@@ -115,6 +115,10 @@ The boards in this section are not real mainboards, but emulators.
 ## MSI
 
 - [MS-7707](msi/ms7707/ms7707.md)
+
+## OCP
+
+- [Tioga Pass](ocp/tiogapass.md)
 
 ## Open Cellular
 
@@ -133,6 +137,10 @@ The boards in this section are not real mainboards, but emulators.
 ## Prodrive
 
 - [Hermes](prodrive/hermes.md)
+
+## Purism
+
+- [Librem Mini](purism/librem_mini.md)
 
 ## Protectli
 

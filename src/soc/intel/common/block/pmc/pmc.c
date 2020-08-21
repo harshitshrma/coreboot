@@ -93,10 +93,8 @@ static void pch_pmc_read_resources(struct device *dev)
 
 void pmc_set_acpi_mode(void)
 {
-	if (CONFIG(HAVE_SMI_HANDLER) && !acpi_is_wakeup_s3()) {
-		printk(BIOS_DEBUG, "Disabling ACPI via APMC:\n");
-		outb(APM_CNT_ACPI_DISABLE, APM_CNT);
-		printk(BIOS_DEBUG, "done.\n");
+	if (!acpi_is_wakeup_s3()) {
+		apm_control(APM_CNT_ACPI_DISABLE);
 	}
 }
 
@@ -124,6 +122,8 @@ static const unsigned short pci_device_ids[] = {
 	PCI_DEVICE_ID_INTEL_TGP_PMC,
 	PCI_DEVICE_ID_INTEL_MCC_PMC,
 	PCI_DEVICE_ID_INTEL_JSP_PMC,
+	PCI_DEVICE_ID_INTEL_ADP_P_PMC,
+	PCI_DEVICE_ID_INTEL_ADP_S_PMC,
 	0
 };
 

@@ -16,11 +16,59 @@
 #include <soc/pmc.h>
 #include <soc/serialio.h>
 #include <soc/usb.h>
-#include <stdint.h>
+#include <types.h>
 
 #define MAX_HD_AUDIO_DMIC_LINKS 2
 #define MAX_HD_AUDIO_SNDW_LINKS 4
 #define MAX_HD_AUDIO_SSP_LINKS  6
+
+/* The first two are for TGL-U */
+#define POWER_LIMITS_U_2_CORE	0
+#define POWER_LIMITS_U_4_CORE	1
+#define POWER_LIMITS_Y_2_CORE	2
+#define POWER_LIMITS_Y_4_CORE	3
+#define POWER_LIMITS_MAX	4
+
+/*
+ * Enable External V1P05 Rail in: BIT0:S0i1/S0i2,
+ * BIT1:S0i3, BIT2:S3, BIT3:S4, BIT4:S5
+ */
+enum fivr_enable_states {
+	FIVR_ENABLE_S0i1_S0i2	= BIT(0),
+	FIVR_ENABLE_S0i3	= BIT(1),
+	FIVR_ENABLE_S3		= BIT(2),
+	FIVR_ENABLE_S4		= BIT(3),
+	FIVR_ENABLE_S5		= BIT(4),
+};
+
+/*
+ * Enable the following for External V1p05 rail
+ * BIT1: Normal Active voltage supported
+ * BIT2: Minimum active voltage supported
+ * BIT3: Minimum Retention voltage supported
+ */
+enum fivr_voltage_supported {
+	FIVR_VOLTAGE_NORMAL		= BIT(1),
+	FIVR_VOLTAGE_MIN_ACTIVE		= BIT(2),
+	FIVR_VOLTAGE_MIN_RETENTION	= BIT(3),
+};
+
+#define FIVR_ENABLE_ALL_SX (FIVR_ENABLE_S0i1_S0i2 | FIVR_ENABLE_S0i3 |	\
+			    FIVR_ENABLE_S3 | FIVR_ENABLE_S4 | FIVR_ENABLE_S5)
+
+/* Bit values for use in LpmStateEnableMask. */
+enum lpm_state_mask {
+	LPM_S0i2_0 = BIT(0),
+	LPM_S0i2_1 = BIT(1),
+	LPM_S0i2_2 = BIT(2),
+	LPM_S0i3_0 = BIT(3),
+	LPM_S0i3_1 = BIT(4),
+	LPM_S0i3_2 = BIT(5),
+	LPM_S0i3_3 = BIT(6),
+	LPM_S0i3_4 = BIT(7),
+	LPM_S0iX_ALL = LPM_S0i2_0 | LPM_S0i2_1 | LPM_S0i2_2
+		     | LPM_S0i3_0 | LPM_S0i3_1 | LPM_S0i3_2 | LPM_S0i3_3 | LPM_S0i3_4,
+};
 
 struct soc_intel_tigerlake_config {
 
@@ -28,7 +76,7 @@ struct soc_intel_tigerlake_config {
 	struct soc_intel_common_config common_soc_config;
 
 	/* Common struct containing power limits configuration information */
-	struct soc_power_limits_config power_limits_config;
+	struct soc_power_limits_config power_limits_config[POWER_LIMITS_MAX];
 
 	/* Gpio group routed to each dword of the GPE0 block. Values are
 	 * of the form PMC_GPP_[A:U] or GPD. */
@@ -44,10 +92,13 @@ struct soc_intel_tigerlake_config {
 
 	/* Enable S0iX support */
 	int s0ix_enable;
+	/* S0iX: Selectively disable individual sub-states, by default all are enabled. */
+	enum lpm_state_mask LpmStateDisableMask;
+
 	/* Support for TCSS xhci, xdci, TBT PCIe root ports and DMA controllers */
-	uint8_t TcssD3HotEnable;
+	uint8_t TcssD3HotDisable;
 	/* Support for TBT PCIe root ports and DMA controllers with D3Hot->D3Cold */
-	uint8_t TcssD3ColdEnable;
+	uint8_t TcssD3ColdDisable;
 
 	/* Enable DPTF support */
 	int dptf_enable;
@@ -83,6 +134,9 @@ struct soc_intel_tigerlake_config {
 	/* Rank Margin Tool. 1:Enable, 0:Disable */
 	uint8_t RMT;
 
+	/* Command Pins Mirrored */
+	uint32_t CmdMirror;
+
 	/* USB related */
 	struct usb2_port_config usb2_ports[16];
 	struct usb3_port_config usb3_ports[10];
@@ -98,6 +152,23 @@ struct soc_intel_tigerlake_config {
 	uint8_t SataPortsEnable[8];
 	uint8_t SataPortsDevSlp[8];
 
+	/*
+	 * Enable(0)/Disable(1) SATA Power Optimizer on PCH side.
+	 * Default 0. Setting this to 1 disables the SATA Power Optimizer.
+	 */
+	uint8_t SataPwrOptimizeDisable;
+
+	/*
+	 * SATA Port Enable Dito Config.
+	 * Enable DEVSLP Idle Timeout settings (DmVal, DitoVal).
+	 */
+	uint8_t SataPortsEnableDitoConfig[8];
+
+	/* SataPortsDmVal is the DITO multiplier. Default is 15. */
+	uint8_t SataPortsDmVal[8];
+	/* SataPortsDitoVal is the DEVSLP Idle Timeout, default is 625ms */
+	uint16_t SataPortsDitoVal[8];
+
 	/* Audio related */
 	uint8_t PchHdaDspEnable;
 	uint8_t PchHdaAudioLinkHdaEnable;
@@ -108,6 +179,7 @@ struct soc_intel_tigerlake_config {
 
 	/* PCIe Root Ports */
 	uint8_t PcieRpEnable[CONFIG_MAX_ROOT_PORTS];
+	uint8_t PcieRpHotPlug[CONFIG_MAX_ROOT_PORTS];
 	/* PCIe output clocks type to PCIe devices.
 	 * 0-23: PCH rootport, 0x70: LAN, 0x80: unspecified but in use,
 	 * 0xFF: not used */
@@ -156,16 +228,6 @@ struct soc_intel_tigerlake_config {
 
 	/* Enable C6 DRAM */
 	uint8_t enable_c6dram;
-	/*
-	 * PRMRR size setting with below options
-	 * Disable: 0x0
-	 * 32MB: 0x2000000
-	 * 64MB: 0x4000000
-	 * 128 MB: 0x8000000
-	 * 256 MB: 0x10000000
-	 * 512 MB: 0x20000000
-	 */
-	uint32_t PrmrrSize;
 	uint8_t PmTimerDisabled;
 	/*
 	 * SerialIO device mode selection:
@@ -311,11 +373,24 @@ struct soc_intel_tigerlake_config {
 	 */
 	uint8_t DmiPwrOptimizeDisable;
 
+	/* structure containing various settings for PCH FIVRs */
+	struct {
+		bool configure_ext_fivr;
+		enum fivr_enable_states v1p05_enable_bitmap;
+		enum fivr_enable_states vnn_enable_bitmap;
+		enum fivr_voltage_supported v1p05_supported_voltage_bitmap;
+		enum fivr_voltage_supported vnn_supported_voltage_bitmap;
+		/* External Icc Max for V1p05 rail in mA  */
+		int v1p05_icc_max_ma;
+		/* External Vnn Voltage in mV */
+		int vnn_sx_voltage_mv;
+	} ext_fivr_settings;
+
 	/*
-	 * Enable(0)/Disable(1) SATA Power Optimizer on PCH side.
-	 * Default 0. Setting this to 1 disables the SATA Power Optimizer.
+	 * Enable(1)/Disable(0) CPU Replacement check.
+	 * Default 0. Setting this to 1 to check CPU replacement.
 	 */
-	uint8_t SataPwrOptimizeDisable;
+	uint8_t CpuReplacementCheck;
 };
 
 typedef struct soc_intel_tigerlake_config config_t;

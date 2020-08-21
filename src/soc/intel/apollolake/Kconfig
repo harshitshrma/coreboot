@@ -105,6 +105,7 @@ config CPU_SPECIFIC_OPTIONS
 	select NO_UART_ON_SUPERIO
 	select INTEL_GMA_ACPI
 	select INTEL_GMA_SWSMISCI
+	select HAVE_ASAN_IN_ROMSTAGE
 
 config CHROMEOS
 	select CHROMEOS_RAMOOPS_DYNAMIC
@@ -218,7 +219,7 @@ config LBP2_FROM_IFWI
 config LBP2_FILE_NAME
 	string "Path of file to write to logical boot partition 2 region"
 	depends on NEED_LBP2 && !LBP2_FROM_IFWI
-	default "3rdparty/blobs/mainboard/$(CONFIG_MAINBOARD_DIR)/lbp2.bin"
+	default "3rdparty/blobs/mainboard/\$(CONFIG_MAINBOARD_DIR)/lbp2.bin"
 	help
 	  Name of file to store in the logical boot partition 2 region.
 
@@ -239,7 +240,7 @@ config IFWI_FMAP_NAME
 config IFWI_FILE_NAME
 	string "Path of file to write to IFWI region"
 	depends on NEED_IFWI
-	default "3rdparty/blobs/mainboard/$(CONFIG_MAINBOARD_DIR)/ifwi.bin"
+	default "3rdparty/blobs/mainboard/\$(CONFIG_MAINBOARD_DIR)/ifwi.bin"
 	help
 	  Name of file to store in the IFWI region.
 

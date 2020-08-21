@@ -10,6 +10,7 @@
 #include <device/pci.h>
 #include <device/pci_ops.h>
 #include <cbmem.h>
+#include <acpi/acpi_gnvs.h>
 #include <amdblocks/amd_pci_util.h>
 #include <amdblocks/reset.h>
 #include <amdblocks/acpimmio.h>
@@ -17,40 +18,17 @@
 #include <amdblocks/lpc.h>
 #include <amdblocks/acpi.h>
 #include <amdblocks/spi.h>
+#include <soc/acpi.h>
 #include <soc/cpu.h>
 #include <soc/i2c.h>
 #include <soc/southbridge.h>
 #include <soc/smi.h>
+#include <soc/uart.h>
 #include <soc/amd_pci_int_defs.h>
-#include <delay.h>
 #include <soc/pci_devs.h>
 #include <soc/nvs.h>
 #include <types.h>
 #include "chip.h"
-
-#define FCH_AOAC_UART_FOR_CONSOLE \
-		(CONFIG_UART_FOR_CONSOLE == 0 ? FCH_AOAC_DEV_UART0 \
-		: CONFIG_UART_FOR_CONSOLE == 1 ? FCH_AOAC_DEV_UART1 \
-		: CONFIG_UART_FOR_CONSOLE == 2 ? FCH_AOAC_DEV_UART2 \
-		: CONFIG_UART_FOR_CONSOLE == 3 ? FCH_AOAC_DEV_UART3 \
-		: -1)
-#if FCH_AOAC_UART_FOR_CONSOLE == -1
-# error Unsupported UART_FOR_CONSOLE chosen
-#endif
-
-/*
- * Table of devices that need their AOAC registers enabled and waited
- * upon (usually about .55 milliseconds). Instead of individual delays
- * waiting for each device to become available, a single delay will be
- * executed.  The console UART is handled separately from this table.
- */
-const static int aoac_devs[] = {
-	FCH_AOAC_DEV_AMBA,
-	FCH_AOAC_DEV_I2C2,
-	FCH_AOAC_DEV_I2C3,
-	FCH_AOAC_DEV_I2C4,
-	FCH_AOAC_DEV_ESPI,
-};
 
 /*
  * Table of APIC register index and associated IRQ name. Using IDX_XXX_NAME
@@ -111,63 +89,6 @@ const struct irq_idx_name *sb_get_apic_reg_association(size_t *size)
 	return irq_association;
 }
 
-static void power_on_aoac_device(int dev)
-{
-	uint8_t byte;
-
-	/* Power on the UART and AMBA devices */
-	byte = aoac_read8(AOAC_DEV_D3_CTL(dev));
-	byte |= FCH_AOAC_PWR_ON_DEV;
-	aoac_write8(AOAC_DEV_D3_CTL(dev), byte);
-}
-
-static bool is_aoac_device_enabled(int dev)
-{
-	uint8_t byte;
-
-	byte = aoac_read8(AOAC_DEV_D3_STATE(dev));
-	byte &= (FCH_AOAC_PWR_RST_STATE | FCH_AOAC_RST_CLK_OK_STATE);
-	if (byte == (FCH_AOAC_PWR_RST_STATE | FCH_AOAC_RST_CLK_OK_STATE))
-		return true;
-	else
-		return false;
-}
-
-static void enable_aoac_console_uart(void)
-{
-	if (!CONFIG(PICASSO_UART))
-		return;
-
-	power_on_aoac_device(FCH_AOAC_UART_FOR_CONSOLE);
-}
-
-static bool is_aoac_console_uart_enabled(void)
-{
-	if (!CONFIG(PICASSO_UART))
-		return true;
-
-	return is_aoac_device_enabled(FCH_AOAC_UART_FOR_CONSOLE);
-}
-
-void enable_aoac_devices(void)
-{
-	bool status;
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(aoac_devs); i++)
-		power_on_aoac_device(aoac_devs[i]);
-	enable_aoac_console_uart();
-
-	/* Wait for AOAC devices to indicate power and clock OK */
-	do {
-		udelay(100);
-		status = true;
-		for (i = 0; i < ARRAY_SIZE(aoac_devs); i++)
-			status &= is_aoac_device_enabled(aoac_devs[i]);
-		status &= is_aoac_console_uart_enabled();
-	} while (!status);
-}
-
 static void sb_enable_cf9_io(void)
 {
 	uint32_t reg = pm_read32(PM_DECODE_EN);
@@ -226,7 +147,14 @@ void fch_pre_init(void)
 	sb_enable_legacy_io();
 	enable_aoac_devices();
 	sb_reset_i2c_slaves();
-	if (CONFIG(PICASSO_UART))
+
+	/*
+	 * On reset Range_0 defaults to enabled. We want to start with a clean
+	 * slate to not have things unexpectedly enabled.
+	 */
+	clear_uart_legacy_config();
+
+	if (CONFIG(PICASSO_CONSOLE_UART))
 		set_uart_config(CONFIG_UART_FOR_CONSOLE);
 }
 
@@ -305,7 +233,6 @@ void sb_enable(struct device *dev)
 static void sb_init_acpi_ports(void)
 {
 	u32 reg;
-	msr_t cst_addr;
 
 	/* We use some of these ports in SMM regardless of whether or not
 	 * ACPI tables are generated. Enable these ports indiscriminately.
@@ -315,11 +242,6 @@ static void sb_init_acpi_ports(void)
 	pm_write16(PM1_CNT_BLK, ACPI_PM1_CNT_BLK);
 	pm_write16(PM_TMR_BLK, ACPI_PM_TMR_BLK);
 	pm_write16(PM_GPE0_BLK, ACPI_GPE0_BLK);
-
-	/* CpuControl is in \_SB.CP00, 6 bytes */
-	cst_addr.hi = 0;
-	cst_addr.lo = ACPI_CPU_CONTROL;
-	wrmsr(MSR_CSTATE_ADDRESS, cst_addr);
 
 	if (CONFIG(HAVE_SMI_HANDLER)) {
 		/* APMC - SMI Command Port */
@@ -351,76 +273,55 @@ static void sb_init_acpi_ports(void)
 				PM_ACPI_TIMER_EN_EN);
 }
 
-static int get_index_bit(uint32_t value, uint16_t limit)
-{
-	uint16_t i;
-	uint32_t t;
-
-	if (limit >= TOTAL_BITS(uint32_t))
-		return -1;
-
-	/* get a mask of valid bits. Ex limit = 3, set bits 0-2 */
-	t = (1 << limit) - 1;
-	if ((value & t) == 0)
-		return -1;
-	t = 1;
-	for (i = 0; i < limit; i++) {
-		if (value & t)
-			break;
-		t <<= 1;
-	}
-	return i;
-}
-
 static void set_nvs_sws(void *unused)
 {
-	struct soc_power_reg *sws;
-	struct global_nvs_t *gnvs;
-	int index;
+	struct chipset_state *state;
+	struct global_nvs *gnvs;
 
-	sws = cbmem_find(CBMEM_ID_POWER_STATE);
-	if (sws == NULL)
+	state = cbmem_find(CBMEM_ID_POWER_STATE);
+	if (state == NULL)
 		return;
-	gnvs = cbmem_find(CBMEM_ID_ACPI_GNVS);
+	gnvs = acpi_get_gnvs();
 	if (gnvs == NULL)
 		return;
 
-	index = get_index_bit(sws->pm1_sts & sws->pm1_en, PM1_LIMIT);
-	if (index < 0)
-		gnvs->pm1i = ~0ULL;
-	else
-		gnvs->pm1i = index;
-
-	index = get_index_bit(sws->gpe0_sts & sws->gpe0_en, GPE0_LIMIT);
-	if (index < 0)
-		gnvs->gpei = ~0ULL;
-	else
-		gnvs->gpei = index;
+	acpi_fill_gnvs(gnvs, &state->gpe_state);
 }
 
 BOOT_STATE_INIT_ENTRY(BS_OS_RESUME, BS_ON_ENTRY, set_nvs_sws, NULL);
 
-void southbridge_init(void *chip_info)
+/*
+ * A-Link to AHB bridge, part of the AMBA fabric. These are internal clocks
+ * and unneeded for Raven/Picasso so gate them to save power.
+ */
+static void al2ahb_clock_gate(void)
 {
-	i2c_soc_init();
-	sb_init_acpi_ports();
-	acpi_clear_pm1_status();
+	uint8_t al2ahb_val;
+	uintptr_t al2ahb_base = ALINK_AHB_ADDRESS;
+
+	al2ahb_val = read8((void *)(al2ahb_base + AL2AHB_CONTROL_CLK_OFFSET));
+	al2ahb_val |= AL2AHB_CLK_GATE_EN;
+	write8((void *)(al2ahb_base + AL2AHB_CONTROL_CLK_OFFSET), al2ahb_val);
+	al2ahb_val = read8((void *)(al2ahb_base + AL2AHB_CONTROL_HCLK_OFFSET));
+	al2ahb_val |= AL2AHB_HCLK_GATE_EN;
+	write8((void *)(al2ahb_base + AL2AHB_CONTROL_HCLK_OFFSET), al2ahb_val);
 }
 
-static void set_sb_final_nvs(void)
+void southbridge_init(void *chip_info)
 {
-	struct global_nvs_t *gnvs = cbmem_find(CBMEM_ID_ACPI_GNVS);
-	if (gnvs == NULL)
-		return;
+	struct chipset_state *state;
 
-	gnvs->aoac.ic2e = is_aoac_device_enabled(FCH_AOAC_DEV_I2C2);
-	gnvs->aoac.ic3e = is_aoac_device_enabled(FCH_AOAC_DEV_I2C3);
-	gnvs->aoac.ic4e = is_aoac_device_enabled(FCH_AOAC_DEV_I2C4);
-	gnvs->aoac.ut0e = is_aoac_device_enabled(FCH_AOAC_DEV_UART0);
-	gnvs->aoac.ut1e = is_aoac_device_enabled(FCH_AOAC_DEV_UART1);
-	gnvs->aoac.ut2e = is_aoac_device_enabled(FCH_AOAC_DEV_UART2);
-	gnvs->aoac.ut3e = is_aoac_device_enabled(FCH_AOAC_DEV_UART3);
-	gnvs->aoac.espi = 1;
+	i2c_soc_init();
+	sb_init_acpi_ports();
+
+	state = cbmem_find(CBMEM_ID_POWER_STATE);
+	if (state) {
+		acpi_pm_gpe_add_events_print_events(&state->gpe_state);
+		gpio_add_events(&state->gpio_state);
+	}
+	acpi_clear_pm_gpe_status();
+
+	al2ahb_clock_gate();
 }
 
 void southbridge_final(void *chip_info)
@@ -430,8 +331,6 @@ void southbridge_final(void *chip_info)
 	if (CONFIG(MAINBOARD_POWER_RESTORE))
 		restored_power = PM_RESTORE_S0_IF_PREV_S0;
 	pm_write8(PM_RTC_SHADOW, restored_power);
-
-	set_sb_final_nvs();
 }
 
 /*

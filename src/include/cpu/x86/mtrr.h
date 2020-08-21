@@ -16,6 +16,7 @@
 
 #define MTRR_CAP_MSR			0x0fe
 
+#define MTRR_CAP_PRMRR			(1 << 12)
 #define MTRR_CAP_SMRR			(1 << 11)
 #define MTRR_CAP_WC			(1 << 10)
 #define MTRR_CAP_FIX			(1 << 8)
@@ -189,10 +190,6 @@ static inline unsigned int fls(unsigned int x)
  * Note MTRR boundaries, must be power of two.
  */
 #define CACHE_TMP_RAMTOP (16<<20)
-
-#if ((CONFIG_XIP_ROM_SIZE & (CONFIG_XIP_ROM_SIZE - 1)) != 0)
-# error "CONFIG_XIP_ROM_SIZE is not a power of 2"
-#endif
 
 /* For ROM caching, generally, try to use the next power of 2. */
 #define OPTIMAL_CACHE_ROM_SIZE _ALIGN_UP_POW2(CONFIG_ROM_SIZE)

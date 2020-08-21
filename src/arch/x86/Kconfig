@@ -4,6 +4,7 @@ config ARCH_X86
 	bool
 	select PCI
 	select RELOCATABLE_MODULES
+	select HAVE_ASAN_IN_RAMSTAGE
 
 # stage selectors for x86
 
@@ -133,12 +134,6 @@ config NUM_IPI_STARTS
 	int
 	default 2
 
-config CBMEM_TOP_BACKUP
-	def_bool n
-	help
-	  Platform implements non-volatile storage to cache cbmem_top()
-	  over stage transitions and optionally also over S3 suspend.
-
 config PRERAM_CBMEM_CONSOLE_SIZE
 	hex
 	default 0xc00
@@ -162,7 +157,7 @@ config HAVE_CMOS_DEFAULT
 
 config CMOS_DEFAULT_FILE
 	string
-	default "src/mainboard/$(MAINBOARDDIR)/cmos.default"
+	default "src/mainboard/\$(MAINBOARDDIR)/cmos.default"
 	depends on HAVE_CMOS_DEFAULT
 
 config IOAPIC_INTERRUPTS_ON_FSB
@@ -315,5 +310,9 @@ config MAX_ACPI_TABLE_SIZE_KB
 	default 144
 	help
 	  Set the maximum size of all ACPI tables in KiB.
+
+config MEMLAYOUT_LD_FILE
+	string
+	default "src/arch/x86/memlayout.ld"
 
 endif

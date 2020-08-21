@@ -14,6 +14,8 @@
 #include <device/pci_def.h>
 #include <lib.h>
 #include <mrc_cache.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <timestamp.h>
 #include "raminit.h"
 #include "pei_data.h"
@@ -120,7 +122,6 @@ static void prepare_mrc_cache(struct pei_data *pei_data)
  */
 void sdram_initialize(struct pei_data *pei_data)
 {
-	struct sys_info sysinfo;
 	int (*entry)(struct pei_data *pei_data) __attribute__((regparm(1)));
 
 	/* Wait for ME to be ready */
@@ -128,10 +129,6 @@ void sdram_initialize(struct pei_data *pei_data)
 	intel_early_me_uma_size();
 
 	printk(BIOS_DEBUG, "Starting UEFI PEI System Agent\n");
-
-	memset(&sysinfo, 0, sizeof(sysinfo));
-
-	sysinfo.boot_path = pei_data->boot_mode;
 
 	/*
 	 * Do not pass MRC data in for recovery mode boot,
@@ -251,7 +248,7 @@ static void southbridge_fill_pei_data(struct pei_data *pei_data)
 {
 	const struct device *dev = pcidev_on_root(0x19, 0);
 
-	pei_data->smbusbar   = SMBUS_IO_BASE;
+	pei_data->smbusbar   = CONFIG_FIXED_SMBUS_IO_BASE;
 	pei_data->wdbbar     = 0x04000000;
 	pei_data->wdbsize    = 0x1000;
 	pei_data->rcba       = (uintptr_t)DEFAULT_RCBABASE;

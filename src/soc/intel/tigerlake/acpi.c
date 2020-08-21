@@ -1,11 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 
 #include <acpi/acpi.h>
+#include <acpi/acpi_gnvs.h>
 #include <acpi/acpigen.h>
 #include <device/mmio.h>
 #include <arch/smp/mpspec.h>
 #include <cbmem.h>
 #include <console/console.h>
+#include <device/device.h>
 #include <device/pci_ops.h>
 #include <ec/google/chromeec/ec.h>
 #include <intelblocks/cpulib.h>
@@ -163,7 +165,7 @@ void soc_fill_fadt(acpi_fadt_t *fadt)
 
 	fadt->pm_tmr_blk = pmbase + PM1_TMR;
 	fadt->pm_tmr_len = 4;
-	fadt->x_pm_tmr_blk.space_id = 1;
+	fadt->x_pm_tmr_blk.space_id = ACPI_ADDRESS_SPACE_IO;
 	fadt->x_pm_tmr_blk.bit_width = fadt->pm_tmr_len * 8;
 	fadt->x_pm_tmr_blk.bit_offset = 0;
 	fadt->x_pm_tmr_blk.access_size = ACPI_ACCESS_SIZE_DWORD_ACCESS;
@@ -186,7 +188,7 @@ static unsigned long soc_fill_dmar(unsigned long current)
 	uint64_t gfxvtbar = MCHBAR64(GFXVTBAR) & VTBAR_MASK;
 	bool gfxvten = MCHBAR32(GFXVTBAR) & VTBAR_ENABLED;
 
-	if (igfx_dev && igfx_dev->enabled && gfxvtbar && gfxvten) {
+	if (is_dev_enabled(igfx_dev) && gfxvtbar && gfxvten) {
 		unsigned long tmp = current;
 
 		current += acpi_create_dmar_drhd(current, 0, 0, gfxvtbar);
@@ -199,7 +201,7 @@ static unsigned long soc_fill_dmar(unsigned long current)
 	uint64_t ipuvtbar = MCHBAR64(IPUVTBAR) & VTBAR_MASK;
 	bool ipuvten = MCHBAR32(IPUVTBAR) & VTBAR_ENABLED;
 
-	if (ipu_dev && ipu_dev->enabled && ipuvtbar && ipuvten) {
+	if (is_dev_enabled(ipu_dev) && ipuvtbar && ipuvten) {
 		unsigned long tmp = current;
 
 		current += acpi_create_dmar_drhd(current, 0, 0, ipuvtbar);
@@ -272,7 +274,7 @@ unsigned long sa_write_acpi_tables(const struct device *dev, unsigned long curre
 	return current;
 }
 
-void acpi_create_gnvs(struct global_nvs_t *gnvs)
+void acpi_create_gnvs(struct global_nvs *gnvs)
 {
 	config_t *config = config_of_soc();
 

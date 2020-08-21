@@ -8,6 +8,7 @@
 #include <fsp/api.h>
 #include <intelblocks/p2sb.h>
 #include <post.h>
+#include <soc/acpi.h>
 #include <soc/cpu.h>
 #include <soc/ramstage.h>
 #include <soc/pm.h>
@@ -496,12 +497,14 @@ static struct device_operations pci_domain_ops = {
 	.read_resources = &pci_domain_read_resources,
 	.set_resources = &xeonsp_cpx_pci_domain_set_resources,
 	.scan_bus = &xeonsp_cpx_pci_domain_scan_bus,
+	.write_acpi_tables  = &northbridge_write_acpi_tables,
 };
 
 static struct device_operations cpu_bus_ops = {
 	.read_resources = noop_read_resources,
 	.set_resources = noop_set_resources,
 	.init = cpx_init_cpus,
+	.acpi_fill_ssdt = generate_cpu_entries,
 };
 
 /* Attach IIO stack bus numbers with dummy device to PCI DOMAIN 0000 device */
@@ -582,6 +585,8 @@ static void chip_enable_dev(struct device *dev)
 static void chip_final(void *data)
 {
 	p2sb_hide();
+
+	set_bios_init_completion();
 }
 
 static void chip_init(void *data)

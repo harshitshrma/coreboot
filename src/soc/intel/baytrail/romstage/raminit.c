@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 
-#include <stddef.h>
+#include <stdint.h>
 #include <acpi/acpi.h>
 #include <assert.h>
 #include <cbfs.h>
@@ -36,7 +36,7 @@ int smbus_enable_iobar(uintptr_t base)
 	pci_write_config32(smbus_dev, PCI_BASE_ADDRESS_4, reg);
 	/* Enable decode of I/O space. */
 	reg = pci_read_config16(smbus_dev, PCI_COMMAND);
-	reg |= 0x1;
+	reg |= PCI_COMMAND_IO;
 	pci_write_config16(smbus_dev, PCI_COMMAND, reg);
 	/* Enable Host Controller */
 	reg = pci_read_config8(smbus_dev, 0x40);
@@ -115,11 +115,15 @@ static void print_dram_info(void *dram_data)
 	populate_smbios_tables(dram_data, speed, num_channels);
 }
 
+#define SPD_SIZE 256
+static u8 spd_buf[NUM_CHANNELS][SPD_SIZE];
+
 void raminit(struct mrc_params *mp, int prev_sleep_state)
 {
 	int ret;
 	mrc_wrapper_entry_t mrc_entry;
 	struct region_device rdev;
+	size_t i;
 
 	/* Fill in default entries. */
 	mp->version = MRC_PARAMS_VER;
@@ -158,19 +162,29 @@ void raminit(struct mrc_params *mp, int prev_sleep_state)
 	 */
 	mrc_entry = (void *)(uintptr_t)CONFIG_MRC_BIN_ADDRESS;
 
-	if (mp->mainboard.dram_info_location == DRAM_INFO_SPD_SMBUS)
+	if (mp->mainboard.dram_info_location == DRAM_INFO_SPD_SMBUS) {
+		/* Workaround for broken SMBus support in the MRC */
 		enable_smbus();
+		mp->mainboard.dram_info_location = DRAM_INFO_SPD_MEM;
+		for (i = 0; i < NUM_CHANNELS; ++i) {
+			if (mp->mainboard.spd_addrs[i]) {
+				i2c_eeprom_read(mp->mainboard.spd_addrs[i],
+					0, SPD_SIZE, spd_buf[i]);
+				/* NOTE: MRC looks for Channel 1 SPD at array
+					index 1 */
+				mp->mainboard.dram_data[i] = spd_buf;
+			}
+		}
+	}
 
 	ret = mrc_entry(mp);
 
 	if (prev_sleep_state != ACPI_S3) {
 		cbmem_initialize_empty();
 	} else if (cbmem_initialize()) {
-	#if CONFIG(HAVE_ACPI_RESUME)
 		printk(BIOS_DEBUG, "Failed to recover CBMEM in S3 resume.\n");
 		/* Failed S3 resume, reset to come up cleanly */
 		system_reset();
-	#endif
 	}
 
 	print_dram_info(mp->mainboard.dram_data[0]);

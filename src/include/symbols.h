@@ -24,6 +24,17 @@ DECLARE_REGION(cbfs_cache)
 DECLARE_REGION(fmap_cache)
 DECLARE_REGION(tpm_tcpa_log)
 
+#if ENV_ROMSTAGE && CONFIG(ASAN_IN_ROMSTAGE)
+DECLARE_REGION(bss)
+DECLARE_REGION(asan_shadow)
+#endif
+
+#if ENV_RAMSTAGE && CONFIG(ASAN_IN_RAMSTAGE)
+DECLARE_REGION(data)
+DECLARE_REGION(heap)
+DECLARE_REGION(asan_shadow)
+#endif
+
 /* Regions for execution units. */
 
 DECLARE_REGION(payload)
@@ -63,7 +74,7 @@ DECLARE_REGION(bl31)
  * (Does not necessarily mean that the memory is accessible.) */
 static inline int preram_symbols_available(void)
 {
-	return !CONFIG(ARCH_X86) || ENV_ROMSTAGE_OR_BEFORE;
+	return !ENV_X86 || ENV_ROMSTAGE_OR_BEFORE;
 }
 
 #endif /* __SYMBOLS_H */

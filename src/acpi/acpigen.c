@@ -687,7 +687,7 @@ void acpigen_write_empty_PTC(void)
 		.space_id    = ACPI_ADDRESS_SPACE_FIXED,
 		.bit_width   = 0,
 		.bit_offset  = 0,
-		.access_size = 0,
+		.access_size = ACPI_ACCESS_SIZE_UNDEFINED,
 		.addrl       = 0,
 		.addrh       = 0,
 	};
@@ -739,6 +739,17 @@ void acpigen_write_STA(uint8_t status)
 	acpigen_write_method("_STA", 0);
 	acpigen_emit_byte(RETURN_OP);
 	acpigen_write_byte(status);
+	acpigen_pop_len();
+}
+
+void acpigen_write_STA_ext(const char *namestring)
+{
+	/*
+	 * Method (_STA, 0, NotSerialized) { Return (ext_val) }
+	 */
+	acpigen_write_method("_STA", 0);
+	acpigen_emit_byte(RETURN_OP);
+	acpigen_emit_namestring(namestring);
 	acpigen_pop_len();
 }
 
@@ -1342,6 +1353,13 @@ void acpigen_write_to_integer(uint8_t src, uint8_t dst)
 	acpigen_emit_byte(dst);
 }
 
+void acpigen_write_to_integer_from_namestring(const char *source, uint8_t dst_op)
+{
+	acpigen_emit_byte(TO_INTEGER_OP);
+	acpigen_emit_namestring(source);
+	acpigen_emit_byte(dst_op);
+}
+
 void acpigen_write_byte_buffer(uint8_t *arr, size_t size)
 {
 	size_t i;
@@ -1542,7 +1560,7 @@ void acpigen_write_CPPC_package(const struct cppc_config *config)
 	for (i = 0; i < max; ++i) {
 		const acpi_addr_t *reg = &(config->regs[i]);
 		if (reg->space_id == ACPI_ADDRESS_SPACE_MEMORY &&
-		    reg->bit_width == 32 && reg->access_size == 0) {
+		    reg->bit_width == 32 && reg->access_size == ACPI_ACCESS_SIZE_UNDEFINED) {
 			acpigen_write_dword(reg->addrl);
 		} else {
 			acpigen_write_register_resource(reg);
@@ -1800,15 +1818,15 @@ int __weak acpigen_soc_clear_tx_gpio(unsigned int gpio_num)
  */
 int acpigen_enable_tx_gpio(struct acpi_gpio *gpio)
 {
-	if (gpio->polarity == ACPI_GPIO_ACTIVE_HIGH)
-		return acpigen_soc_set_tx_gpio(gpio->pins[0]);
-	else
+	if (gpio->active_low)
 		return acpigen_soc_clear_tx_gpio(gpio->pins[0]);
+	else
+		return acpigen_soc_set_tx_gpio(gpio->pins[0]);
 }
 
 int acpigen_disable_tx_gpio(struct acpi_gpio *gpio)
 {
-	if (gpio->polarity == ACPI_GPIO_ACTIVE_LOW)
+	if (gpio->active_low)
 		return acpigen_soc_set_tx_gpio(gpio->pins[0]);
 	else
 		return acpigen_soc_clear_tx_gpio(gpio->pins[0]);
@@ -1818,7 +1836,7 @@ void acpigen_get_rx_gpio(struct acpi_gpio *gpio)
 {
 	acpigen_soc_read_rx_gpio(gpio->pins[0]);
 
-	if (gpio->polarity == ACPI_GPIO_ACTIVE_LOW)
+	if (gpio->active_low)
 		acpigen_write_xor(LOCAL0_OP, 1, LOCAL0_OP);
 }
 
@@ -1826,7 +1844,7 @@ void acpigen_get_tx_gpio(struct acpi_gpio *gpio)
 {
 	acpigen_soc_get_tx_gpio(gpio->pins[0]);
 
-	if (gpio->polarity == ACPI_GPIO_ACTIVE_LOW)
+	if (gpio->active_low)
 		acpigen_write_xor(LOCAL0_OP, 1, LOCAL0_OP);
 }
 
@@ -1952,4 +1970,39 @@ void acpigen_write_ADR_soundwire_device(const struct soundwire_address *address)
 			  (((uint64_t)address->manufacturer_id & 0xffff) << 24) |
 			  (((uint64_t)address->part_id & 0xffff) << 8) |
 			  (((uint64_t)address->class & 0xff)));
+}
+
+void acpigen_notify(const char *namestr, int value)
+{
+	acpigen_emit_byte(NOTIFY_OP);
+	acpigen_emit_namestring(namestr);
+	acpigen_write_integer(value);
+}
+
+static void _create_field(uint8_t aml_op, uint8_t srcop, size_t byte_offset, const char *name)
+{
+	acpigen_emit_byte(aml_op);
+	acpigen_emit_byte(srcop);
+	acpigen_write_integer(byte_offset);
+	acpigen_emit_namestring(name);
+}
+
+void acpigen_write_create_byte_field(uint8_t op, size_t byte_offset, const char *name)
+{
+	_create_field(CREATE_BYTE_OP, op, byte_offset, name);
+}
+
+void acpigen_write_create_word_field(uint8_t op, size_t byte_offset, const char *name)
+{
+	_create_field(CREATE_WORD_OP, op, byte_offset, name);
+}
+
+void acpigen_write_create_dword_field(uint8_t op, size_t byte_offset, const char *name)
+{
+	_create_field(CREATE_DWORD_OP, op, byte_offset, name);
+}
+
+void acpigen_write_create_qword_field(uint8_t op, size_t byte_offset, const char *name)
+{
+	_create_field(CREATE_QWORD_OP, op, byte_offset, name);
 }

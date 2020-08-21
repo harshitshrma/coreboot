@@ -90,32 +90,23 @@ typedef struct {
  IIO PCIe Ports
  **/
 typedef enum {
+	// IOU0, CSTACK
 	PORT_0 = 0,
-	// IOU0
+	// IOU1, PSTACK0
 	PORT_1A,
 	PORT_1B,
 	PORT_1C,
 	PORT_1D,
-	// IOU1
+	// IOU2, PSTACK1
 	PORT_2A,
 	PORT_2B,
 	PORT_2C,
 	PORT_2D,
-	// IOU2
-	PORT_4A,
-	PORT_4B,
-	PORT_4C,
-	PORT_4D,
-	// MCP0
-	PORT_5A,
-	PORT_5B,
-	PORT_5C,
-	PORT_5D,
-	// MCP1
-	PORT_6A,
-	PORT_6B,
-	PORT_6C,
-	PORT_6D,
+	// IOU3, PSTACK2
+	PORT_3A,
+	PORT_3B,
+	PORT_3C,
+	PORT_3D,
 	MAX_PORTS
 } PCIE_PORTS;
 
@@ -127,8 +118,6 @@ typedef enum {
 	PSTACK0,
 	PSTACK1,
 	PSTACK2,
-	PSTACK3,
-	PSTACK4,
 	MAX_STACKS
 } IIO_STACKS;
 
@@ -199,16 +188,23 @@ typedef struct _STACK_RES {
   uint8_t                   Personality; // see STACK_TYPE for details
   uint8_t                   BusBase;
   uint8_t                   BusLimit;
-  uint16_t                  PciResourceIoBase;
-  uint16_t                  PciResourceIoLimit;
-  uint32_t                  IoApicBase;
-  uint32_t                  IoApicLimit;
+  uint16_t                  IoBase; // Base of IO configured for this stack
+  uint16_t                  IoLimit; // Limit of IO configured for this stack
+  uint32_t                  IoApicBase; // Base of IO configured for this stack
+  uint32_t                  IoApicLimit; // Limit of IO configured for this stack
+  uint32_t                  Mmio32Base;
+  uint32_t                  Mmio32Limit;
+  uint64_t                  Mmio64Base;
+  uint64_t                  Mmio64Limit;
+  uint8_t                   PciResourceBusBase; // Base of Bus resource available for PCI devices
+  uint8_t                   PciResourceBusLimit; // Limit of Bus resource available for PCI devices
+  uint16_t                  PciResourceIoBase; // Base of IO resource available for PCI devices
+  uint16_t                  PciResourceIoLimit; // Limit of IO resource available for PCI devices
   uint32_t                  PciResourceMem32Base;
   uint32_t                  PciResourceMem32Limit;
   uint64_t                  PciResourceMem64Base;
   uint64_t                  PciResourceMem64Limit;
   uint32_t                  VtdBarAddress;
-  uint32_t                  Slt2HfiBarAddress;  // KNH Only
 } STACK_RES;
 
 typedef struct {
@@ -220,10 +216,10 @@ typedef struct {
     uint16_t                  PciResourceIoLimit;
     uint32_t                  IoApicBase;
     uint32_t                  IoApicLimit;
-    uint32_t                  PciResourceMem32Base;
-    uint32_t                  PciResourceMem32Limit;
-    uint64_t                  PciResourceMem64Base;
-    uint64_t                  PciResourceMem64Limit;
+    uint32_t                  Mmio32Base;
+    uint32_t                  Mmio32Limit;
+    uint64_t                  Mmio64Base;
+    uint64_t                  Mmio64Limit;
     STACK_RES                 StackRes[MAX_LOGIC_IIO_STACK];
     uint32_t                  RcBaseAddress;
     IIO_DMI_PCIE_INFO         PcieInfo;
@@ -233,10 +229,10 @@ typedef struct {
 typedef struct {
     uint16_t                  PlatGlobalIoBase;       // Global IO Base
     uint16_t                  PlatGlobalIoLimit;      // Global IO Limit
-    uint32_t                  PlatGlobalMmiolBase;    // Global Mmiol base
-    uint32_t                  PlatGlobalMmiolLimit;   // Global Mmiol limit
-    uint64_t                  PlatGlobalMmiohBase;    // Global Mmioh Base [43:0]
-    uint64_t                  PlatGlobalMmiohLimit;   // Global Mmioh Limit [43:0]
+    uint32_t                  PlatGlobalMmio32Base;    // Global Mmiol base
+    uint32_t                  PlatGlobalMmio32Limit;   // Global Mmiol limit
+    uint64_t                  PlatGlobalMmio64Base;    // Global Mmioh Base [43:0]
+    uint64_t                  PlatGlobalMmio64Limit;   // Global Mmioh Limit [43:0]
     QPI_CPU_DATA              CpuQpiInfo[MAX_SOCKET]; // QPI related info per CPU
     QPI_IIO_DATA              IioQpiInfo[MAX_SOCKET]; // QPI related info per IIO
     uint32_t                  MemTsegSize;
@@ -256,10 +252,8 @@ typedef struct {
     uint32_t                  MmiolGranularity;
     UINT64_STRUCT             MmiohGranularity;
     uint8_t                   RemoteRequestThreshold;  //5370389
-    uint64_t                  softskuSocketPresentBitMap;    // bitmap of Softsku sockets with CPUs present detected
     uint32_t                  UboxMmioSize;
     uint32_t                  MaxAddressBits;
-    uint32_t                  DmiReservedMmiolSize[MAX_SOCKET];
 } PLATFORM_DATA;
 
 typedef struct {
@@ -273,8 +267,6 @@ typedef struct {
 	uint8_t                   DmiVc1;
 	uint8_t                   DmiVcm;
 	uint32_t                  CpuPCPSInfo;
-	uint8_t                   LtsxEnable;
-	uint8_t                   MctpEn;
 	uint8_t                   cpuSubType;
 	uint8_t                   SystemRasType;
 	uint8_t                   numCpus;  // 1,..4. Total number of CPU packages installed and detected (1..4)by QPI RC

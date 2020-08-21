@@ -4,14 +4,11 @@
 #include <string.h>
 #include <acpi/acpi.h>
 #include <arch/cpu.h>
-#include <cbmem.h>
 #include <commonlib/helpers.h>
+#include <cpu/x86/smm.h>
 #include <fallback.h>
 #include <timestamp.h>
-#include <program_loading.h>
 #include <romstage_handoff.h>
-#include <symbols.h>
-#include <cpu/x86/smm.h>
 
 #if ENV_RAMSTAGE || ENV_POSTCAR
 
@@ -60,11 +57,6 @@ extern unsigned int __wakeup_size;
 
 static void acpi_jump_to_wakeup(void *vector)
 {
-	if (!acpi_s3_resume_allowed()) {
-		printk(BIOS_WARNING, "ACPI: S3 resume not allowed.\n");
-		return;
-	}
-
 	/* Copy wakeup trampoline in place. */
 	memcpy((void *)WAKEUP_BASE, &__wakeup, __wakeup_size);
 
@@ -79,22 +71,16 @@ void __weak mainboard_suspend_resume(void)
 {
 }
 
-void acpi_resume(void *wake_vec)
+void __noreturn acpi_resume(void *wake_vec)
 {
-	if (CONFIG(HAVE_SMI_HANDLER)) {
-		void *gnvs_address = cbmem_find(CBMEM_ID_ACPI_GNVS);
-
-		/* Restore GNVS pointer in SMM if found */
-		if (gnvs_address) {
-			printk(BIOS_DEBUG, "Restore GNVS pointer to %p\n",
-			       gnvs_address);
-			smm_setup_structures(gnvs_address, NULL, NULL);
-		}
-	}
+	/* Restore GNVS pointer in SMM if found. */
+	apm_control(APM_CNT_GNVS_UPDATE);
 
 	/* Call mainboard resume handler first, if defined. */
 	mainboard_suspend_resume();
 
 	post_code(POST_OS_RESUME);
 	acpi_jump_to_wakeup(wake_vec);
+
+	die("Failed the jump to wakeup vector\n");
 }

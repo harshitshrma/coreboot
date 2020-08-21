@@ -5,6 +5,7 @@
 #include <device/smbus_host.h>
 #include <southbridge/intel/common/gpio.h>
 #include <southbridge/intel/common/pmbase.h>
+#include <southbridge/intel/common/pmutil.h>
 #include "i82801jx.h"
 #include "chip.h"
 
@@ -33,7 +34,6 @@ void i82801jx_lpc_setup(void)
 			   | GAMEL_LPC_EN | FDD_LPC_EN | LPT_LPC_EN
 			   | COMB_LPC_EN | COMA_LPC_EN);
 
-
 	/* Set up generic decode ranges */
 	if (!dev || !dev->chip_info)
 		return;
@@ -59,9 +59,8 @@ void i82801jx_setup_bars(void)
 
 	/* Set up GPIOBASE. */
 	pci_write_config32(d31f0, D31F0_GPIO_BASE, DEFAULT_GPIOBASE);
-		/* Enable GPIO. */
-	pci_write_config8(d31f0, D31F0_GPIO_CNTL,
-			  pci_read_config8(d31f0, D31F0_GPIO_CNTL) | 0x10);
+	/* Enable GPIO. */
+	pci_or_config8(d31f0, D31F0_GPIO_CNTL, 0x10);
 }
 
 #define TCO_BASE 0x60
@@ -96,6 +95,8 @@ void i82801jx_early_init(void)
 	   and 0xe (required if ME is disabled but present), bit 31 locks it.
 	   The other bits are 'must write'. */
 	u8 reg8 = pci_read_config8(d31f0, 0xac);
+
+	/* FIXME: It's a 8-bit variable!!! */
 	reg8 |= (1 << 31) | (1 << 30) | (1 << 20) | (3 << 8);
 	pci_write_config8(d31f0, 0xac, reg8);
 

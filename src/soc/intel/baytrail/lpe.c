@@ -2,7 +2,7 @@
 
 #include <device/mmio.h>
 #include <device/pci_ops.h>
-#include <cbmem.h>
+#include <acpi/acpi_gnvs.h>
 #include <console/console.h>
 #include <device/device.h>
 #include <device/pci.h>
@@ -15,13 +15,14 @@
 #include <soc/nvs.h>
 #include <soc/pattrs.h>
 #include <soc/pci_devs.h>
-#include <soc/pmc.h>
+#include <soc/pm.h>
 #include <soc/ramstage.h>
 #include "chip.h"
 
-
-/* The LPE audio devices needs 1MiB of memory reserved aligned to a 512MiB
- * address. Just take 1MiB @ 512MiB. */
+/*
+ * The LPE audio devices needs 1MiB of memory reserved aligned to a 512MiB
+ * address. Just take 1MiB @ 512MiB.
+ */
 #define FIRMWARE_PHYS_BASE (512 << 20)
 #define FIRMWARE_PHYS_LENGTH (1 << 20)
 #define FIRMWARE_PCI_REG_BASE 0xa8
@@ -43,21 +44,20 @@ static void lpe_enable_acpi_mode(struct device *dev)
 	static const struct reg_script ops[] = {
 		/* Disable PCI interrupt, enable Memory and Bus Master */
 		REG_PCI_OR16(PCI_COMMAND,
-			     PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER | (1<<10)),
+			     PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER | PCI_COMMAND_INT_DISABLE),
+
 		/* Enable ACPI mode */
 		REG_IOSF_OR(IOSF_PORT_0x58, LPE_PCICFGCTR1,
-			    LPE_PCICFGCTR1_PCI_CFG_DIS |
-			    LPE_PCICFGCTR1_ACPI_INT_EN),
+			    LPE_PCICFGCTR1_PCI_CFG_DIS | LPE_PCICFGCTR1_ACPI_INT_EN),
+
 		REG_SCRIPT_END
 	};
-	global_nvs_t *gnvs;
+	struct global_nvs *gnvs;
 
 	/* Find ACPI NVS to update BARs */
-	gnvs = (global_nvs_t *)cbmem_find(CBMEM_ID_ACPI_GNVS);
-	if (!gnvs) {
-		printk(BIOS_ERR, "Unable to locate Global NVS\n");
+	gnvs = acpi_get_gnvs();
+	if (!gnvs)
 		return;
-	}
 
 	/* Save BAR0, BAR1, and firmware base  to ACPI NVS */
 	assign_device_nvs(dev, &gnvs->dev.lpe_bar0, PCI_BASE_ADDRESS_0);
@@ -84,10 +84,12 @@ static void setup_codec_clock(struct device *dev)
 		freq_str = "19.2";
 		reg = CLK_FREQ_19P2MHZ;
 		break;
+
 	case 25:
 		freq_str = "25";
 		reg = CLK_FREQ_25MHZ;
 		break;
+
 	default:
 		printk(BIOS_DEBUG, "LPE codec clock not required.\n");
 		return;
@@ -122,7 +124,7 @@ static void lpe_stash_firmware_info(struct device *dev)
 	}
 
 	/* Continue using old way of informing firmware address / size. */
-	pci_write_config32(dev, FIRMWARE_PCI_REG_BASE, res->base);
+	pci_write_config32(dev, FIRMWARE_PCI_REG_BASE,   res->base);
 	pci_write_config32(dev, FIRMWARE_PCI_REG_LENGTH, res->size);
 
 	/* C0 and later steppings use an offset in the MMIO space. */
@@ -140,7 +142,6 @@ static void lpe_init(struct device *dev)
 	struct soc_intel_baytrail_config *config = config_of(dev);
 
 	lpe_stash_firmware_info(dev);
-
 	setup_codec_clock(dev);
 
 	if (config->lpe_acpi_mode)

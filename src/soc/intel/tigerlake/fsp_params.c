@@ -7,9 +7,12 @@
 #include <fsp/api.h>
 #include <fsp/ppi/mp_service_ppi.h>
 #include <fsp/util.h>
+#include <intelblocks/cse.h>
 #include <intelblocks/lpss.h>
+#include <intelblocks/mp_init.h>
 #include <intelblocks/xdci.h>
 #include <intelpch/lockdown.h>
+#include <security/vboot/vboot_common.h>
 #include <soc/gpio_soc_defs.h>
 #include <soc/intel/common/vbt.h>
 #include <soc/pci_devs.h>
@@ -21,6 +24,10 @@
 #define THC_NONE	0
 #define THC_0		1
 #define THC_1		2
+
+/* SATA DEVSLP idle timeout default values */
+#define DEF_DMVAL	15
+#define DEF_DITOVAL	625
 
 /*
  * Chip config parameter PcieRpL1Substates uses (UPD value + 1)
@@ -79,6 +86,7 @@ static const pci_devfn_t serial_io_dev[] = {
 void platform_fsp_silicon_init_params_cb(FSPS_UPD *supd)
 {
 	int i;
+	uint32_t cpu_id;
 	FSP_S_CONFIG *params = &supd->FspsConfig;
 
 	struct device *dev;
@@ -93,22 +101,19 @@ void platform_fsp_silicon_init_params_cb(FSPS_UPD *supd)
 
 	/* Check if IGD is present and fill Graphics init param accordingly */
 	dev = pcidev_path_on_root(SA_DEVFN_IGD);
-	if (CONFIG(RUN_FSP_GOP) && dev && dev->enabled)
-		params->PeiGraphicsPeimInit = 1;
-	else
-		params->PeiGraphicsPeimInit = 0;
+	params->PeiGraphicsPeimInit = CONFIG(RUN_FSP_GOP) && is_dev_enabled(dev);
 
 	/* Use coreboot MP PPI services if Kconfig is enabled */
-	if (CONFIG(USE_INTEL_FSP_TO_CALL_COREBOOT_PUBLISH_MP_PPI)) {
+	if (CONFIG(USE_INTEL_FSP_TO_CALL_COREBOOT_PUBLISH_MP_PPI))
 		params->CpuMpPpi = (uintptr_t) mp_fill_ppi_services_data();
-		params->SkipMpInit = 0;
-	} else {
-		params->SkipMpInit = !CONFIG_USE_INTEL_FSP_MP_INIT;
-	}
 
 	/* D3Hot and D3Cold for TCSS */
-	params->D3HotEnable = config->TcssD3HotEnable;
-	params->D3ColdEnable = config->TcssD3ColdEnable;
+	params->D3HotEnable = !config->TcssD3HotDisable;
+	cpu_id = cpu_get_cpuid();
+	if (cpu_id == CPUID_TIGERLAKE_A0)
+		params->D3ColdEnable = 0;
+	else
+		params->D3ColdEnable = !config->TcssD3ColdDisable;
 
 	params->TcssAuxOri = config->TcssAuxOri;
 	for (i = 0; i < 8; i++)
@@ -165,6 +170,7 @@ void platform_fsp_silicon_init_params_cb(FSPS_UPD *supd)
 		params->PcieRpLtrEnable[i] = config->PcieRpLtrEnable[i];
 		params->PcieRpAdvancedErrorReporting[i] =
 			config->PcieRpAdvancedErrorReporting[i];
+		params->PcieRpHotPlug[i] = config->PcieRpHotPlug[i];
 	}
 
 	/* Enable ClkReqDetect for enabled port */
@@ -188,10 +194,8 @@ void platform_fsp_silicon_init_params_cb(FSPS_UPD *supd)
 
 	/* SATA */
 	dev = pcidev_path_on_root(PCH_DEVFN_SATA);
-	if (!dev)
-		params->SataEnable = 0;
-	else {
-		params->SataEnable = dev->enabled;
+	params->SataEnable = is_dev_enabled(dev);
+	if (params->SataEnable) {
 		params->SataMode = config->SataMode;
 		params->SataSalpSupport = config->SataSalpSupport;
 		memcpy(params->SataPortsEnable, config->SataPortsEnable,
@@ -199,6 +203,14 @@ void platform_fsp_silicon_init_params_cb(FSPS_UPD *supd)
 		memcpy(params->SataPortsDevSlp, config->SataPortsDevSlp,
 			sizeof(params->SataPortsDevSlp));
 	}
+
+	/* S0iX: Selectively enable individual sub-states,
+	 * by default all are enabled.
+	 *
+	 * LPM0-s0i2.0, LPM1-s0i2.1, LPM2-s0i2.2, LPM3-s0i3.0,
+	 * LPM4-s0i3.1, LPM5-s0i3.2, LPM6-s0i3.3, LPM7-s0i3.4
+	 */
+	params->LpmStateEnableMask = LPM_S0iX_ALL & ~config->LpmStateDisableMask;
 
 	/*
 	 * Power Optimizer for DMI and SATA.
@@ -209,49 +221,69 @@ void platform_fsp_silicon_init_params_cb(FSPS_UPD *supd)
 	params->PchPwrOptEnable = !(config->DmiPwrOptimizeDisable);
 	params->SataPwrOptEnable = !(config->SataPwrOptimizeDisable);
 
+	/*
+	 *  Enable DEVSLP Idle Timeout settings DmVal and DitoVal.
+	 *  SataPortsDmVal is the DITO multiplier. Default is 15.
+	 *  SataPortsDitoVal is the DEVSLP Idle Timeout (DITO), Default is 625ms.
+	 *  The default values can be changed from devicetree.
+	 */
+	for (i = 0; i < ARRAY_SIZE(config->SataPortsEnableDitoConfig); i++) {
+		if (config->SataPortsEnableDitoConfig[i]) {
+			if (config->SataPortsDmVal[i])
+				params->SataPortsDmVal[i] = config->SataPortsDmVal[i];
+			else
+				params->SataPortsDmVal[i] = DEF_DMVAL;
+
+			if (config->SataPortsDitoVal[i])
+				params->SataPortsDitoVal[i] = config->SataPortsDitoVal[i];
+			else
+				params->SataPortsDitoVal[i] = DEF_DITOVAL;
+		}
+	}
+
 	/* Enable TCPU for processor thermal control */
 	params->Device4Enable = config->Device4Enable;
 
+	/* Set TccActivationOffset */
+	params->TccActivationOffset = config->tcc_offset;
+
 	/* LAN */
 	dev = pcidev_path_on_root(PCH_DEVFN_GBE);
-	if (!dev)
-		params->PchLanEnable = 0;
-	else
-		params->PchLanEnable = dev->enabled;
+	params->PchLanEnable = is_dev_enabled(dev);
 
 	/* CNVi */
 	dev = pcidev_path_on_root(PCH_DEVFN_CNVI_WIFI);
-	if (dev)
-		params->CnviMode = dev->enabled;
-	else
-		params->CnviMode = 0;
+	params->CnviMode = is_dev_enabled(dev);
 
 	/* VMD */
 	dev = pcidev_path_on_root(SA_DEVFN_VMD);
-	if (dev)
-		params->VmdEnable = dev->enabled;
-	else
-		params->VmdEnable = 0;
+	params->VmdEnable = is_dev_enabled(dev);
 
 	/* THC */
 	dev = pcidev_path_on_root(PCH_DEVFN_THC0);
-	if (!dev)
-		params->ThcPort0Assignment = 0;
-	else
-		params->ThcPort0Assignment = dev->enabled ? THC_0 : THC_NONE;
+	params->ThcPort0Assignment = is_dev_enabled(dev) ? THC_0 : THC_NONE;
 
 	dev =  pcidev_path_on_root(PCH_DEVFN_THC1);
-	if (!dev)
-		params->ThcPort1Assignment = 0;
-	else
-		params->ThcPort1Assignment = dev->enabled ? THC_1 : THC_NONE;
+	params->ThcPort1Assignment = is_dev_enabled(dev) ? THC_1 : THC_NONE;
 
 	/* Legacy 8254 timer support */
-	params->Enable8254ClockGating = !CONFIG_USE_LEGACY_8254_TIMER;
-	params->Enable8254ClockGatingOnS3 = !CONFIG_USE_LEGACY_8254_TIMER;
+	params->Enable8254ClockGating = !CONFIG(USE_LEGACY_8254_TIMER);
+	params->Enable8254ClockGatingOnS3 = !CONFIG(USE_LEGACY_8254_TIMER);
 
 	/* Enable Hybrid storage auto detection */
-	params->HybridStorageMode = config->HybridStorageMode;
+	if (CONFIG(SOC_INTEL_CSE_LITE_SKU) && cse_is_hfs3_fw_sku_lite()
+		&& vboot_recovery_mode_enabled() && !cse_is_hfs1_com_normal()) {
+		/*
+		 * CSE Lite SKU does not support hybrid storage dynamic configuration
+		 * in CSE RO boot, and FSP does not allow to send the strap override
+		 * HECI commands if CSE is not in normal mode; hence, hybrid storage
+		 * mode is disabled on CSE RO boot in recovery boot mode.
+		 */
+		printk(BIOS_INFO, "cse_lite: CSE RO boot. HybridStorageMode disabled\n");
+		params->HybridStorageMode = 0;
+	} else {
+		params->HybridStorageMode = config->HybridStorageMode;
+	}
 
 	/* USB4/TBT */
 	for (i = 0; i < ARRAY_SIZE(params->ITbtPcieRootPortEn); i++) {
@@ -262,7 +294,50 @@ void platform_fsp_silicon_init_params_cb(FSPS_UPD *supd)
 			params->ITbtPcieRootPortEn[i] = 0;
 	}
 
+	/* PCH FIVR settings override */
+	if (config->ext_fivr_settings.configure_ext_fivr) {
+		params->PchFivrExtV1p05RailEnabledStates =
+			config->ext_fivr_settings.v1p05_enable_bitmap;
+
+		params->PchFivrExtV1p05RailSupportedVoltageStates =
+			config->ext_fivr_settings.v1p05_supported_voltage_bitmap;
+
+		params->PchFivrExtVnnRailEnabledStates =
+			config->ext_fivr_settings.vnn_enable_bitmap;
+
+		params->PchFivrExtVnnRailSupportedVoltageStates =
+			config->ext_fivr_settings.vnn_supported_voltage_bitmap;
+
+		/* convert mV to number of 2.5 mV increments */
+		params->PchFivrExtVnnRailSxVoltage =
+			(config->ext_fivr_settings.vnn_sx_voltage_mv * 10) / 25;
+
+		params->PchFivrExtV1p05RailIccMaximum =
+			config->ext_fivr_settings.v1p05_icc_max_ma;
+
+	}
+
+	/* EnableMultiPhaseSiliconInit for running MultiPhaseSiInit */
+	params->EnableMultiPhaseSiliconInit = 1;
 	mainboard_silicon_init_params(params);
+}
+
+/*
+ * Callbacks for SoC/Mainboard specific overrides for FspMultiPhaseSiInit
+ * This platform supports below MultiPhaseSIInit Phase(s):
+ * Phase   |  FSP return point                                |  Purpose
+ * ------- + ------------------------------------------------ + -------------------------------
+ *   1     |  After TCSS initialization completed             |  for TCSS specific init
+ */
+void platform_fsp_multi_phase_init_cb(uint32_t phase_index)
+{
+	switch (phase_index) {
+	case 1:
+		/* TCSS specific initialization here */
+		break;
+	default:
+		break;
+	}
 }
 
 /* Mainboard GPIO Configuration */

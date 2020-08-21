@@ -12,6 +12,7 @@
 #include <device/pci_ops.h>
 #include <arch/ioapic.h>
 #include <acpi/acpi.h>
+#include <acpi/acpi_gnvs.h>
 #include <cpu/x86/smm.h>
 #include <acpi/acpigen.h>
 #include <cbmem.h>
@@ -20,6 +21,7 @@
 #include "i82801ix.h"
 #include "nvs.h"
 #include <southbridge/intel/common/pciehp.h>
+#include <southbridge/intel/common/pmutil.h>
 #include <southbridge/intel/common/acpi_pirq_gen.h>
 
 #define NMI_OFF	0
@@ -95,7 +97,7 @@ static void i82801ix_pirq_init(struct device *dev)
 	 */
 
 	for (irq_dev = all_devices; irq_dev; irq_dev = irq_dev->next) {
-		u8 int_pin=0, int_line=0;
+		u8 int_pin = 0, int_line = 0;
 
 		if (!irq_dev->enabled || irq_dev->path.type != DEVICE_PATH_PCI)
 			continue;
@@ -158,8 +160,7 @@ static void i82801ix_power_options(struct device *dev)
 	int nmi_option;
 
 	/* BIOS must program... */
-	reg32 = pci_read_config32(dev, 0xac);
-	pci_write_config32(dev, 0xac, reg32 | (1 << 30) | (3 << 8));
+	pci_or_config32(dev, 0xac, (1 << 30) | (3 << 8));
 
 	/* Which state do we want to goto after g3 (power restored)?
 	 * 0 == S0 Full On
@@ -228,12 +229,8 @@ static void i82801ix_power_options(struct device *dev)
 	// another laptop wants this?
 	// reg16 &= ~(1 << 10);	// BIOS_PCI_EXP_EN - Desktop/Mobile only
 	reg16 |= (1 << 10);	// BIOS_PCI_EXP_EN - Desktop/Mobile only
-#if DEBUG_PERIODIC_SMIS
-	/* Set DEBUG_PERIODIC_SMIS in i82801ix.h to debug using
-	 * periodic SMIs.
-	 */
-	reg16 |= (3 << 0); // Periodic SMI every 8s
-#endif
+	if (CONFIG(DEBUG_PERIODIC_SMI))
+		reg16 |= (3 << 0); // Periodic SMI every 8s
 	if (config->c5_enable)
 		reg16 |= (1 << 11); /* Enable C5, C6 and PMSYNC# */
 	pci_write_config16(dev, D31F0_GEN_PMCON_1, reg16);
@@ -276,18 +273,13 @@ static void i82801ix_power_options(struct device *dev)
 
 static void i82801ix_configure_cstates(struct device *dev)
 {
-	u8 reg8;
-
-	reg8 = pci_read_config8(dev, D31F0_CxSTATE_CNF);
-	reg8 |= (1 << 4) | (1 << 3) | (1 << 2);	// Enable Popup & Popdown
-	pci_write_config8(dev, D31F0_CxSTATE_CNF, reg8);
+	// Enable Popup & Popdown
+	pci_or_config8(dev, D31F0_CxSTATE_CNF, (1 << 4) | (1 << 3) | (1 << 2));
 
 	// Set Deeper Sleep configuration to recommended values
-	reg8 = pci_read_config8(dev, D31F0_C4TIMING_CNT);
-	reg8 &= 0xf0;
-	reg8 |= (2 << 2);	// Deeper Sleep to Stop CPU: 34-40us
-	reg8 |= (2 << 0);	// Deeper Sleep to Sleep: 15us
-	pci_write_config8(dev, D31F0_C4TIMING_CNT, reg8);
+	// Deeper Sleep to Stop CPU: 34-40us
+	// Deeper Sleep to Sleep: 15us
+	pci_update_config8(dev, D31F0_C4TIMING_CNT, ~0x0f, (2 << 2) | (2 << 0));
 
 	/* We could enable slow-C4 exit here, if someone needs it? */
 }
@@ -352,15 +344,10 @@ static void enable_clock_gating(void)
 
 static void i82801ix_set_acpi_mode(struct device *dev)
 {
-	if (CONFIG(HAVE_SMI_HANDLER)) {
-		if (!acpi_is_wakeup_s3()) {
-			printk(BIOS_DEBUG, "Disabling ACPI via APMC:\n");
-			outb(APM_CNT_ACPI_DISABLE, APM_CNT); // Disable ACPI mode
-			printk(BIOS_DEBUG, "done.\n");
-		} else {
-			printk(BIOS_DEBUG, "S3 wakeup, enabling ACPI via APMC\n");
-			outb(APM_CNT_ACPI_ENABLE, APM_CNT);
-		}
+	if (!acpi_is_wakeup_s3()) {
+		apm_control(APM_CNT_ACPI_DISABLE);
+	} else {
+		apm_control(APM_CNT_ACPI_ENABLE);
 	}
 }
 
@@ -369,7 +356,9 @@ static void lpc_init(struct device *dev)
 	printk(BIOS_DEBUG, "i82801ix: %s\n", __func__);
 
 	/* Set the value for PCI command register. */
-	pci_write_config16(dev, PCI_COMMAND, 0x000f);
+	pci_write_config16(dev, PCI_COMMAND,
+			   PCI_COMMAND_MASTER | PCI_COMMAND_SPECIAL |
+			   PCI_COMMAND_MEMORY | PCI_COMMAND_IO);
 
 	/* IO APIC initialization. */
 	i82801ix_enable_apic(dev);
@@ -436,7 +425,7 @@ static void i82801ix_lpc_read_resources(struct device *dev)
 	 * 0x00c0 ~ 0x00de....ISA DMA
 	 * 0x00c1 ~ 0x00df....ISA DMA aliases
 	 * 0x00f0.............Coprocessor Error
-	 * (0x0400-0x041f)....SMBus (SMBUS_IO_BASE, during raminit)
+	 * (0x0400-0x041f)....SMBus (CONFIG_FIXED_SMBUS_IO_BASE, during raminit)
 	 * 0x04d0 - 0x04d1....PIC
 	 * 0x0500 - 0x057f....PM (DEFAULT_PMBASE)
 	 * 0x0580 - 0x05bf....SB GPIO (DEFAULT_GPIOBASE)
@@ -469,16 +458,16 @@ static void i82801ix_lpc_read_resources(struct device *dev)
 	res->flags = IORESOURCE_MEM | IORESOURCE_ASSIGNED | IORESOURCE_FIXED;
 }
 
-static void southbridge_inject_dsdt(const struct device *dev)
+void southbridge_inject_dsdt(const struct device *dev)
 {
-	global_nvs_t *gnvs = cbmem_add (CBMEM_ID_ACPI_GNVS, sizeof(*gnvs));
+	struct global_nvs *gnvs = cbmem_add(CBMEM_ID_ACPI_GNVS, sizeof(*gnvs));
 
 	if (gnvs) {
 		memset(gnvs, 0, sizeof(*gnvs));
 		acpi_create_gnvs(gnvs);
 
 		/* And tell SMI about it */
-		smm_setup_structures(gnvs, NULL, NULL);
+		apm_control(APM_CNT_GNVS_UPDATE);
 
 		/* Add it to SSDT.  */
 		acpigen_write_scope("\\");
@@ -486,7 +475,6 @@ static void southbridge_inject_dsdt(const struct device *dev)
 		acpigen_pop_len();
 	}
 }
-
 
 static const char *lpc_acpi_name(const struct device *dev)
 {

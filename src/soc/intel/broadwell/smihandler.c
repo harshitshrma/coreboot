@@ -25,16 +25,6 @@
 
 static u8 smm_initialized = 0;
 
-/*
- * GNVS needs to be updated by an 0xEA PM Trap (B2) after it has been located
- * by coreboot.
- */
-static global_nvs_t *gnvs;
-global_nvs_t *smm_get_gnvs(void)
-{
-	return gnvs;
-}
-
 int southbridge_io_trap_handler(int smif)
 {
 	switch (smif) {
@@ -109,6 +99,10 @@ static void backlight_off(void)
 
 	reg_base = (void *)((uintptr_t)pci_read_config32(SA_DEV_IGD,
 		PCI_BASE_ADDRESS_0) & ~0xf);
+
+	/* Validate pointer before using it */
+	if (smm_points_to_smram(reg_base, PCH_PP_OFF_DELAYS + sizeof(uint32_t)))
+		return;
 
 	/* Check if backlight is enabled */
 	pp_ctrl = read32(reg_base + PCH_PP_CONTROL);
@@ -350,7 +344,11 @@ static void southbridge_smi_apmc(void)
 		state = smi_apmc_find_state_save(reg8);
 		if (state) {
 			/* EBX in the state save contains the GNVS pointer */
-			gnvs = (global_nvs_t *)((u32)state->rbx);
+			gnvs = (struct global_nvs *)((u32)state->rbx);
+			if (smm_points_to_smram(gnvs, sizeof(*gnvs))) {
+				printk(BIOS_ERR, "SMI#: ERROR: GNVS overlaps SMM\n");
+				return;
+			}
 			smm_initialized = 1;
 			printk(BIOS_DEBUG, "SMI#: Setting GNVS to %p\n", gnvs);
 		}

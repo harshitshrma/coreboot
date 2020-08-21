@@ -29,8 +29,6 @@ chip soc/intel/cannonlake
 	register "satapwroptimize" = "1"
 	# Enable System Agent dynamic frequency
 	register "SaGv" = "SaGv_Enabled"
-	# Enable heci communication
-	register "HeciEnabled" = "0"
 	# Enable Speed Shift Technology support
 	register "speed_shift_enable" = "1"
 	# Enable S0ix
@@ -142,7 +140,15 @@ chip soc/intel/cannonlake
 	register "PchPmSlpS3MinAssert" = "2"  # 50ms
 	register "PchPmSlpS4MinAssert" = "1"  # 1s
 	register "PchPmSlpSusMinAssert" = "1" # 500ms
-	register "PchPmSlpAMinAssert" = "3"   # 2s
+	register "PchPmSlpAMinAssert" = "3"   # 98ms
+
+	# NOTE: Duration programmed in the below register should never be smaller than the
+	# stretch duration programmed in the following registers -
+	#	- GEN_PMCON_A.SLP_S3_MIN_ASST_WDTH (PchPmSlpS3MinAssert)
+	#	- GEN_PMCON_A.S4MAW (PchPmSlpS4MinAssert)
+	#	- PM_CFG.SLP_A_MIN_ASST_WDTH (PchPmSlpAMinAssert)
+	#	- PM_CFG.SLP_LAN_MIN_ASST_WDTH
+	register "PchPmPwrCycDur" = "1"       # 1s
 
 	# Enable Audio DSP oscillator qualification for S0ix
 	register "cppmvric2_adsposcdis" = "1"
@@ -304,7 +310,7 @@ chip soc/intel/cannonlake
 		device pci 15.1 on  end # I2C #1
 		device pci 15.2 on  end # I2C #2
 		device pci 15.3 on  end # I2C #3
-		device pci 16.0 on  end # Management Engine Interface 1
+		device pci 16.0 off end # Management Engine Interface 1
 		device pci 16.1 off end # Management Engine Interface 2
 		device pci 16.2 off end # Management Engine IDE-R
 		device pci 16.3 off end # Management Engine KT Redirection

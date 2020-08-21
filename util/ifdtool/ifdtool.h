@@ -48,6 +48,7 @@ enum platform {
 	PLATFORM_JSL,
 	PLATFORM_SKLKBL,
 	PLATFORM_TGL,
+	PLATFORM_ADL,
 };
 
 #define LAYOUT_LINELEN 80
@@ -105,7 +106,7 @@ typedef struct {
 } __attribute__((packed)) fcba_t;
 
 // pch strap
-#define MAX_PCHSTRP 18
+#define MAX_PCHSTRP 1024
 
 typedef struct {
 	uint32_t pchstrp[MAX_PCHSTRP];

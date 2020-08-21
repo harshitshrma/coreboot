@@ -47,7 +47,10 @@ void fsps_load(bool s3wake);
 /* Callbacks for updating stage-specific parameters */
 void platform_fsp_memory_init_params_cb(FSPM_UPD *mupd, uint32_t version);
 void platform_fsp_silicon_init_params_cb(FSPS_UPD *supd);
-
+/* Callbacks for SoC/Mainboard specific overrides */
+void platform_fsp_multi_phase_init_cb(uint32_t phase_index);
+/* Check if SoC sets EnableMultiPhaseSiliconInit UPD */
+int soc_fsp_multi_phase_init_is_enable(void);
 /*
  * The following functions are used when FSP_PLATFORM_MEMORY_SETTINGS_VERSION
  * is employed allowing the mainboard and SoC to supply their own version
@@ -70,6 +73,13 @@ const struct cbmem_entry *soc_load_logo(FSPS_UPD *supd);
 /* Update the SOC specific memory config param for mma. */
 void soc_update_memory_params_for_mma(FSP_M_CONFIG *memory_cfg,
 	struct mma_config_param *mma_cfg);
+
+/*
+ * As per FSP integration guide:
+ * If bootloader needs to take control of APs back, a full AP re-initialization is
+ * required after FSP-S is completed and control has been transferred back to bootloader
+ */
+void do_mpinit_after_fsp(void);
 
 /*
  * # DOCUMENTATION:

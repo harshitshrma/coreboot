@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 
 #include <assert.h>
-#include <stddef.h>
 #include <stdint.h>
 #include <console/console.h>
 #include <cbmem.h>
@@ -71,7 +70,7 @@ static int timestamp_should_run(void)
 	 * Only check boot_cpu() in other stages than
 	 * ENV_PAYLOAD_LOADER on x86.
 	 */
-	if ((!ENV_PAYLOAD_LOADER && CONFIG(ARCH_X86)) && !boot_cpu())
+	if ((!ENV_PAYLOAD_LOADER && ENV_X86) && !boot_cpu())
 		return 0;
 
 	return 1;

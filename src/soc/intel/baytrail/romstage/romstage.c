@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 
-#include <stddef.h>
 #include <arch/io.h>
 #include <arch/romstage.h>
 #include <device/mmio.h>
@@ -17,7 +16,7 @@
 #include <soc/iomap.h>
 #include <soc/msr.h>
 #include <soc/pci_devs.h>
-#include <soc/pmc.h>
+#include <soc/pm.h>
 #include <soc/romstage.h>
 
 static struct chipset_power_state power_state;

@@ -19,7 +19,6 @@
 #include <string.h>
 #include <delay.h>
 #include <elog.h>
-#include <halt.h>
 #include <stdlib.h>
 
 #include "chip.h"
@@ -32,7 +31,7 @@
 #endif
 
 /* Path that the BIOS should take based on ME state */
-static const char *me_bios_path_values[] __unused = {
+static const char *const me_bios_path_values[] __unused = {
 	[ME_NORMAL_BIOS_PATH]		= "Normal",
 	[ME_S3WAKE_BIOS_PATH]		= "S3 Wake",
 	[ME_ERROR_BIOS_PATH]		= "Error",
@@ -515,32 +514,6 @@ static void __unused me_print_fwcaps(mbp_mefwcaps *cap)
 	print_cap("Wireless LAN (WLAN)", cap->wlan);
 }
 
-#if CONFIG(CHROMEOS) && 0 /* DISABLED */
-/* Tell ME to issue a global reset */
-static int mkhi_global_reset(void)
-{
-	struct me_global_reset reset = {
-		.request_origin	= GLOBAL_RESET_BIOS_POST,
-		.reset_type	= CBM_RR_GLOBAL_RESET,
-	};
-	struct mkhi_header mkhi = {
-		.group_id	= MKHI_GROUP_ID_CBM,
-		.command	= MKHI_GLOBAL_RESET,
-	};
-
-	/* Send request and wait for response */
-	printk(BIOS_NOTICE, "ME: %s\n", __FUNCTION__);
-	if (mei_sendrecv_mkhi(&mkhi, &reset, sizeof(reset), NULL, 0) < 0) {
-		/* No response means reset will happen shortly... */
-		halt();
-	}
-
-	/* If the ME responded it rejected the reset request */
-	printk(BIOS_ERR, "ME: Global Reset failed\n");
-	return -1;
-}
-#endif
-
 /* Send END OF POST message to the ME */
 static int __unused mkhi_end_of_post(void)
 {
@@ -551,7 +524,7 @@ static int __unused mkhi_end_of_post(void)
 	u32 eop_ack;
 
 	/* Send request and wait for response */
-	printk(BIOS_NOTICE, "ME: %s\n", __FUNCTION__);
+	printk(BIOS_NOTICE, "ME: %s\n", __func__);
 	if (mei_sendrecv_mkhi(&mkhi, NULL, 0, &eop_ack, sizeof(eop_ack)) < 0) {
 		printk(BIOS_ERR, "ME: END OF POST message failed\n");
 		return -1;
@@ -567,7 +540,6 @@ void intel_me_finalize_smm(void)
 {
 	struct me_hfs hfs;
 	u32 reg32;
-	u16 reg16;
 
 	mei_base_address = (u32 *)
 		(pci_read_config32(PCH_ME_DEV, PCI_BASE_ADDRESS_0) & ~0xf);
@@ -576,10 +548,8 @@ void intel_me_finalize_smm(void)
 	if (!mei_base_address || mei_base_address == (u32 *)0xfffffff0)
 		return;
 
-#if CONFIG(ME_MBP_CLEAR_LATE)
 	/* Wait for ME MBP Cleared indicator */
 	intel_me_mbp_clear(PCH_ME_DEV);
-#endif
 
 	/* Make sure ME is in a mode that expects EOP */
 	reg32 = pci_read_config32(PCH_ME_DEV, PCI_ME_HFS);
@@ -595,9 +565,8 @@ void intel_me_finalize_smm(void)
 	mkhi_end_of_post();
 
 	/* Make sure IO is disabled */
-	reg16 = pci_read_config16(PCH_ME_DEV, PCI_COMMAND);
-	reg16 &= ~(PCI_COMMAND_MASTER | PCI_COMMAND_MEMORY | PCI_COMMAND_IO);
-	pci_write_config16(PCH_ME_DEV, PCI_COMMAND, reg16);
+	pci_and_config16(PCH_ME_DEV, PCI_COMMAND,
+			 ~(PCI_COMMAND_MASTER | PCI_COMMAND_MEMORY | PCI_COMMAND_IO));
 
 	/* Hide the PCI device */
 	RCBA32_OR(FD2, PCH_DISABLE_MEI1);
@@ -698,7 +667,7 @@ static me_bios_path intel_me_path(struct device *dev)
 	/* Check if the MBP is ready */
 	if (!hfs2.mbp_rdy) {
 		printk(BIOS_CRIT, "%s: mbp is not ready!\n",
-		       __FUNCTION__);
+		       __func__);
 		path = ME_ERROR_BIOS_PATH;
 	}
 
@@ -873,9 +842,9 @@ static const unsigned short pci_device_ids[] = {
 };
 
 static const struct pci_driver intel_me __pci_driver = {
-	.ops	= &device_ops,
-	.vendor	= PCI_VENDOR_ID_INTEL,
-	.devices= pci_device_ids,
+	.ops     = &device_ops,
+	.vendor  = PCI_VENDOR_ID_INTEL,
+	.devices = pci_device_ids,
 };
 
 #endif /* !__SIMPLE_DEVICE__ */
@@ -891,22 +860,6 @@ static u32 me_to_host_words_pending(void)
 	return (me.buffer_write_ptr - me.buffer_read_ptr) &
 		(me.buffer_depth - 1);
 }
-
-#if 0
-/* This function is not yet being used, keep it in for the future. */
-static u32 host_to_me_words_room(void)
-{
-	struct mei_csr csr;
-
-	read_me_csr(&csr);
-	if (!csr.ready)
-		return 0;
-
-	read_host_csr(&csr);
-	return (csr.buffer_read_ptr - csr.buffer_write_ptr - 1) &
-		(csr.buffer_depth - 1);
-}
-#endif
 
 struct mbp_payload {
 	mbp_header header;
@@ -971,11 +924,6 @@ static int __unused intel_me_read_mbp(me_bios_payload *mbp_data, struct device *
 	read_host_csr(&host);
 	host.interrupt_generate = 1;
 	write_host_csr(&host);
-
-#if !CONFIG(ME_MBP_CLEAR_LATE)
-	/* Wait for the mbp_cleared indicator. */
-	intel_me_mbp_clear(dev);
-#endif
 
 	/* Dump out the MBP contents. */
 	if (CONFIG_DEFAULT_CONSOLE_LOGLEVEL >= BIOS_DEBUG) {

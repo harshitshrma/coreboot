@@ -184,10 +184,7 @@ static void post_mp_init(void)
 	 * Now that all APs have been relocated as well as the BSP let SMIs
 	 * start flowing.
 	 */
-	smm_southbridge_enable(PWRBTN_EN | GBL_EN);
-
-	/* Lock down the SMRAM space. */
-	smm_lock();
+	global_smi_enable();
 }
 
 static const struct mp_ops mp_ops = {
@@ -210,4 +207,7 @@ void soc_init_cpus(struct bus *cpu_bus)
 {
 	if (mp_init_with_smm(cpu_bus, &mp_ops))
 		printk(BIOS_ERR, "MP initialization failure.\n");
+
+	/* Thermal throttle activation offset */
+	configure_tcc_thermal_target();
 }

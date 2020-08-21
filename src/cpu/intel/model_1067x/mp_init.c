@@ -63,7 +63,7 @@ static void per_cpu_smm_trigger(void)
 		} else {
 			if (!CONFIG(SET_IA32_FC_LOCK_BIT))
 				printk(BIOS_INFO,
-				       "Overriding CONFIG_SET_IA32_FC_LOCK_BIT to enable SMRR\n");
+				       "Overriding CONFIG(SET_IA32_FC_LOCK_BIT) to enable SMRR\n");
 			ia32_ft_ctrl.lo |= (1 << 3) | (1 << 0);
 			wrmsr(IA32_FEATURE_CONTROL, ia32_ft_ctrl);
 		}
@@ -79,7 +79,7 @@ static void post_mp_init(void)
 {
 	/* Now that all APs have been relocated as well as the BSP let SMIs
 	 * start flowing. */
-	smm_southbridge_enable_smi();
+	global_smi_enable();
 
 	/* Lock down the SMRAM space. */
 	smm_lock();

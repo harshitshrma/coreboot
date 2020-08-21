@@ -3,7 +3,7 @@ if BOARD_SYSTEM76_LEMP9
 config BOARD_SPECIFIC_OPTIONS
 	def_bool y
 	select BOARD_ROMSIZE_KB_16384
-	select EC_ACPI
+	select EC_SYSTEM76_EC
 	select HAVE_ACPI_RESUME
 	select HAVE_ACPI_TABLES
 	select HAVE_SMI_HANDLER
@@ -23,7 +23,7 @@ config BOARD_SPECIFIC_OPTIONS
 
 config MAINBOARD_DIR
 	string
-	default system76/lemp9
+	default "system76/lemp9"
 
 config MAINBOARD_PART_NUMBER
 	string
@@ -53,10 +53,6 @@ config CONSOLE_POST
 	bool
 	default y
 
-config ONBOARD_VGA_IS_PRIMARY
-	bool
-	default y
-
 config UART_FOR_CONSOLE
 	int
 	default 2
@@ -80,10 +76,6 @@ config VGA_BIOS_FILE
 config VGA_BIOS_ID
 	string
 	default "8086,9b41"
-
-config FSP_M_XIP
-	bool
-	default y
 
 config POST_DEVICE
 	bool

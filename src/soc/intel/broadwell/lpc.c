@@ -11,6 +11,7 @@
 #include <device/pci_ops.h>
 #include <arch/ioapic.h>
 #include <acpi/acpi.h>
+#include <acpi/acpi_gnvs.h>
 #include <cpu/x86/smm.h>
 #include <cbmem.h>
 #include <reg_script.h>
@@ -89,17 +90,18 @@ static void enable_hpet(struct device *dev)
 static void pch_pirq_init(struct device *dev)
 {
 	struct device *irq_dev;
-	config_t *config = config_of(dev);
 
-	pci_write_config8(dev, PIRQA_ROUT, config->pirqa_routing);
-	pci_write_config8(dev, PIRQB_ROUT, config->pirqb_routing);
-	pci_write_config8(dev, PIRQC_ROUT, config->pirqc_routing);
-	pci_write_config8(dev, PIRQD_ROUT, config->pirqd_routing);
+	const uint8_t pirq = 0x80;
 
-	pci_write_config8(dev, PIRQE_ROUT, config->pirqe_routing);
-	pci_write_config8(dev, PIRQF_ROUT, config->pirqf_routing);
-	pci_write_config8(dev, PIRQG_ROUT, config->pirqg_routing);
-	pci_write_config8(dev, PIRQH_ROUT, config->pirqh_routing);
+	pci_write_config8(dev, PIRQA_ROUT, pirq);
+	pci_write_config8(dev, PIRQB_ROUT, pirq);
+	pci_write_config8(dev, PIRQC_ROUT, pirq);
+	pci_write_config8(dev, PIRQD_ROUT, pirq);
+
+	pci_write_config8(dev, PIRQE_ROUT, pirq);
+	pci_write_config8(dev, PIRQF_ROUT, pirq);
+	pci_write_config8(dev, PIRQG_ROUT, pirq);
+	pci_write_config8(dev, PIRQH_ROUT, pirq);
 
 	for (irq_dev = all_devices; irq_dev; irq_dev = irq_dev->next) {
 		u8 int_pin = 0, int_line = 0;
@@ -111,16 +113,10 @@ static void pch_pirq_init(struct device *dev)
 
 		switch (int_pin) {
 		case 1: /* INTA# */
-			int_line = config->pirqa_routing;
-			break;
 		case 2: /* INTB# */
-			int_line = config->pirqb_routing;
-			break;
 		case 3: /* INTC# */
-			int_line = config->pirqc_routing;
-			break;
 		case 4: /* INTD# */
-			int_line = config->pirqd_routing;
+			int_line = pirq;
 			break;
 		}
 
@@ -409,10 +405,8 @@ static void pch_cg_init(struct device *dev)
 
 static void pch_set_acpi_mode(void)
 {
-	if (CONFIG(HAVE_SMI_HANDLER) && !acpi_is_wakeup_s3()) {
-		printk(BIOS_DEBUG, "Disabling ACPI via APMC:\n");
-		outb(APM_CNT_ACPI_DISABLE, APM_CNT);
-		printk(BIOS_DEBUG, "done.\n");
+	if (!acpi_is_wakeup_s3()) {
+		apm_control(APM_CNT_ACPI_DISABLE);
 	}
 }
 
@@ -555,7 +549,7 @@ static void pch_lpc_add_io_resources(struct device *dev)
 
 static void pch_lpc_read_resources(struct device *dev)
 {
-	global_nvs_t *gnvs;
+	struct global_nvs *gnvs;
 
 	/* Get the normal PCI resources of this device. */
 	pci_dev_read_resources(dev);
@@ -567,14 +561,14 @@ static void pch_lpc_read_resources(struct device *dev)
 	pch_lpc_add_io_resources(dev);
 
 	/* Allocate ACPI NVS in CBMEM */
-	gnvs = cbmem_add(CBMEM_ID_ACPI_GNVS, sizeof(global_nvs_t));
+	gnvs = cbmem_add(CBMEM_ID_ACPI_GNVS, sizeof(struct global_nvs));
 	if (!acpi_is_wakeup_s3() && gnvs)
-		memset(gnvs, 0, sizeof(global_nvs_t));
+		memset(gnvs, 0, sizeof(struct global_nvs));
 }
 
 static void southcluster_inject_dsdt(const struct device *device)
 {
-	global_nvs_t *gnvs;
+	struct global_nvs *gnvs;
 
 	gnvs = cbmem_find(CBMEM_ID_ACPI_GNVS);
 	if (!gnvs) {
@@ -586,7 +580,7 @@ static void southcluster_inject_dsdt(const struct device *device)
 	if (gnvs) {
 		acpi_create_gnvs(gnvs);
 		/* And tell SMI about it */
-		smm_setup_structures(gnvs, NULL, NULL);
+		apm_control(APM_CNT_GNVS_UPDATE);
 
 		/* Add it to DSDT.  */
 		acpigen_write_scope("\\");

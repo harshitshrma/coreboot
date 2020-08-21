@@ -4,6 +4,7 @@
 #include <arch/io.h>
 #include <device/pci_ops.h>
 #include <console/console.h>
+#include <commonlib/region.h>
 #include <device/pci_def.h>
 #include <cpu/x86/smm.h>
 #include <cpu/intel/em64t101_save_state.h>
@@ -16,12 +17,6 @@
 
 #include "pch.h"
 #include "nvs.h"
-
-static global_nvs_t *gnvs;
-global_nvs_t *smm_get_gnvs(void)
-{
-	return gnvs;
-}
 
 int southbridge_io_trap_handler(int smif)
 {
@@ -109,6 +104,7 @@ static void xhci_sleep(u8 slp_typ)
 
 		xhci_bar = pci_read_config32(PCH_XHCI_DEV, PCI_BASE_ADDRESS_0) & ~0xFUL;
 
+		/* FIXME: This looks broken (conditions are always false) */
 		if ((xhci_bar + 0x4C0) & 1)
 			pch_iobp_update(0xEC000082, ~0UL, (3 << 2));
 		if ((xhci_bar + 0x4D0) & 1)
@@ -186,7 +182,7 @@ void southbridge_smi_monitor(void)
 
 void southbridge_smm_xhci_sleep(u8 slp_type)
 {
-	if (smm_get_gnvs()->xhci)
+	if (gnvs->xhci)
 		xhci_sleep(slp_type);
 }
 
@@ -196,7 +192,12 @@ void southbridge_update_gnvs(u8 apm_cnt, int *smm_done)
 		smi_apmc_find_state_save(apm_cnt);
 	if (state) {
 		/* EBX in the state save contains the GNVS pointer */
-		gnvs = (global_nvs_t *)((u32)state->rbx);
+		gnvs = (struct global_nvs *)((u32)state->rbx);
+		struct region r = {(uintptr_t)gnvs, sizeof(struct global_nvs)};
+		if (smm_region_overlaps_handler(&r)) {
+			printk(BIOS_ERR, "SMI#: ERROR: GNVS overlaps SMM\n");
+			return;
+		}
 		*smm_done = 1;
 		printk(BIOS_DEBUG, "SMI#: Setting GNVS to %p\n", gnvs);
 	}

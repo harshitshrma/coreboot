@@ -143,9 +143,6 @@ static int imdr_create_empty(struct imdr *imdr, size_t root_size,
 	assert(IS_POWER_OF_2(root_size));
 	assert(IS_POWER_OF_2(entry_align));
 
-	if (!imdr->limit)
-		return -1;
-
 	/*
 	 * root_size needs to be large enough to accommodate root pointer and
 	 * root book keeping structure. The caller needs to ensure there's
@@ -291,8 +288,7 @@ static int imdr_limit_size(struct imdr *imdr, size_t max_size)
 	return 0;
 }
 
-static size_t imdr_entry_size(const struct imdr *imdr,
-				const struct imd_entry *e)
+static size_t imdr_entry_size(const struct imd_entry *e)
 {
 	return e->size;
 }
@@ -412,7 +408,7 @@ void imd_handle_init_partial_recovery(struct imd *imd)
 		return;
 
 	imd->sm.limit = (uintptr_t)imdr_entry_at(imdr, e);
-	imd->sm.limit += imdr_entry_size(imdr, e);
+	imd->sm.limit += imdr_entry_size(e);
 	imdr = &imd->sm;
 	rp = imdr_get_root_pointer(imdr);
 	imdr->r = relative_pointer(rp, rp->root_offset);
@@ -477,7 +473,7 @@ int imd_recover(struct imd *imd)
 		return 0;
 
 	small_upper_limit = (uintptr_t)imdr_entry_at(imdr, e);
-	small_upper_limit += imdr_entry_size(imdr, e);
+	small_upper_limit += imdr_entry_size(e);
 
 	imd->sm.limit = small_upper_limit;
 
@@ -595,9 +591,9 @@ const struct imd_entry *imd_entry_find_or_add(const struct imd *imd,
 	return imd_entry_add(imd, id, size);
 }
 
-size_t imd_entry_size(const struct imd *imd, const struct imd_entry *entry)
+size_t imd_entry_size(const struct imd_entry *entry)
 {
-	return imdr_entry_size(NULL, entry);
+	return imdr_entry_size(entry);
 }
 
 void *imd_entry_at(const struct imd *imd, const struct imd_entry *entry)
@@ -612,7 +608,7 @@ void *imd_entry_at(const struct imd *imd, const struct imd_entry *entry)
 	return imdr_entry_at(imdr, entry);
 }
 
-uint32_t imd_entry_id(const struct imd *imd, const struct imd_entry *entry)
+uint32_t imd_entry_id(const struct imd_entry *entry)
 {
 	return entry->id;
 }
@@ -674,7 +670,7 @@ static void imdr_print_entries(const struct imdr *imdr, const char *indent,
 			printk(BIOS_DEBUG, "%s", name);
 		printk(BIOS_DEBUG, "%2zu. ", i);
 		printk(BIOS_DEBUG, "%p ", imdr_entry_at(imdr, e));
-		printk(BIOS_DEBUG, "0x%08zx\n", imdr_entry_size(imdr, e));
+		printk(BIOS_DEBUG, "0x%08zx\n", imdr_entry_size(e));
 	}
 }
 

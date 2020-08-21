@@ -11,8 +11,33 @@
 #include <soc/i2c.h>
 #include <soc/iomap.h>
 #include <soc/southbridge.h>
-#include <acpi/acpi_device.h>
-#include <arch/smp/mpspec.h>
+#include <arch/x86/include/arch/smp/mpspec.h> /* point from top level */
+
+/*
+  USB 2.0 PHY Parameters
+*/
+struct __packed usb2_phy_tune {
+	/* Disconnect Threshold Adjustment. Range 0 - 0x7 */
+	uint8_t	com_pds_tune;
+	/* Squelch Threshold Adjustment. Range 0 - 0x7 */
+	uint8_t	sq_rx_tune;
+	/* FS/LS Source Impedance Adjustment. Range 0 - 0xF */
+	uint8_t	tx_fsls_tune;
+	/* HS Transmitter Pre-Emphasis Curent Control. Range 0 - 0x3 */
+	uint8_t	tx_pre_emp_amp_tune;
+	/* HS Transmitter Pre-Emphasis Duration Control. Range: 0 - 0x1 */
+	uint8_t	tx_pre_emp_pulse_tune;
+	/* HS Transmitter Rise/Fall Time Adjustment. Range: 0 - 0x3 */
+	uint8_t	tx_rise_tune;
+	/* HS DC Voltage Level Adjustment. Range 0 - 0xF */
+	uint8_t	rx_vref_tune;
+	/* Transmitter High-Speed Crossover Adjustment. Range 0 - 0x3 */
+	uint8_t	tx_hsxv_tune;
+	/* USB Source Impedance Adjustment. Range 0 - 0x3. */
+	uint8_t	tx_res_tune;
+};
+
+#define USB_PORT_COUNT	6
 
 struct soc_amd_picasso_config {
 	struct soc_amd_common_config common_config;
@@ -35,6 +60,11 @@ struct soc_amd_picasso_config {
 		I2S_PINS_UNCONF = 7,	/* All pads will be input mode */
 	} acp_pin_cfg;
 
+	/* Enable ACP I2S wake feature (0 = disable, 1 = enable) */
+	u8 acp_i2s_wake_enable;
+	/* Enable ACP PME (0 = disable, 1 = enable) */
+	u8 acpi_pme_enable;
+
 	/**
 	 * IRQ 0 - 15 have a default trigger of edge and default polarity of high.
 	 * If you have a device that requires a different configuration you can override the
@@ -47,7 +77,6 @@ struct soc_amd_picasso_config {
 	} irq_override[16];
 
 	/* Options for these are in src/arch/x86/include/acpi/acpi.h */
-	uint8_t  fadt_pm_profile;
 	uint16_t fadt_boot_arch;
 	uint32_t fadt_flags;
 
@@ -63,6 +92,14 @@ struct soc_amd_picasso_config {
 
 	/* PROCHOT_L de-assertion Ramp Time */
 	uint32_t prochot_l_deassertion_ramp_time;
+
+	enum {
+		DOWNCORE_AUTO = 0,
+		DOWNCORE_1 = 1, /* Run with single core */
+		DOWNCORE_2 = 3, /* Run with two cores */
+		DOWNCORE_3 = 4, /* Run with three cores */
+	} downcore_mode;
+	uint8_t smt_disable; /* 1=disable SMT, 0=enable SMT */
 
 	/* Lower die temperature limit */
 	uint32_t thermctl_limit;
@@ -103,6 +140,20 @@ struct soc_amd_picasso_config {
 		SD_EMMC_EMMC_HS400,
 		SD_EMMC_EMMC_HS300,
 	} sd_emmc_config;
+
+	uint8_t xhci0_force_gen1;
+
+	uint8_t has_usb2_phy_tune_params;
+	struct usb2_phy_tune usb_2_port_tune_params[USB_PORT_COUNT];
+	enum {
+		USB_OC_PIN_0	= 0x0,
+		USB_OC_PIN_1	= 0x1,
+		USB_OC_PIN_2	= 0x2,
+		USB_OC_PIN_3	= 0x3,
+		USB_OC_PIN_4	= 0x4,
+		USB_OC_PIN_5	= 0x5,
+		USB_OC_NONE	= 0xf,
+	} usb_port_overcurrent_pin[USB_PORT_COUNT];
 };
 
 typedef struct soc_amd_picasso_config config_t;
